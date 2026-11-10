@@ -39,9 +39,9 @@
   </div>`;
   }
 
-  App.LocalPrefs = () => `${App.SyncPrefs ? App.SyncPrefs() : ""}${aiCard()}
+  App.LocalPrefs = () => `${App.SyncPrefs ? App.SyncPrefs() : ""}${App.PhoneQR ? App.PhoneQR() : ""}${aiCard()}
   <div class="card" style="grid-column:1/-1"><h3>${I.copy}${L("نسخة احتياطية (ملف)", "Sauvegarde (fichier)")}</h3>
-    <p class="small muted">${L("كل جهاز عندو البيانات متاعو. باش تنقل بيانات من الـPC للتلفون (ولا العكس): نزّل ملف هنا، ابعثو لروحك، وفي الجهاز الآخر «رجّع من ملف». نصيحة: نزّل نسخة كل أحد.", "Chaque appareil garde ses données. Pour passer du PC au téléphone (ou l'inverse) : télécharge un fichier ici, envoie-le-toi, puis « Restaurer depuis un fichier » sur l'autre appareil. Conseil : une sauvegarde chaque dimanche.")}</p>
+    <p class="small muted">${L("كي تربط الـPC والتلفون (الفوق)، البيانات تتعدّى وحدها. الملف هذا نسخة زيادة للأمان: نزّل واحد كل أحد.", "Une fois le PC et le téléphone reliés (au-dessus), les données passent toutes seules. Ce fichier est une copie de sécurité en plus : télécharges-en une chaque dimanche.")}</p>
     <div class="row" style="margin-top:10px"><button class="btn primary" data-act="backupFile">${L("نزّل ملف النسخة", "Télécharger la sauvegarde")}</button>
       <label class="btn" for="restore-file">${L("رجّع من ملف", "Restaurer depuis un fichier")}</label><input id="restore-file" class="hide" type="file" accept="application/json,.json" data-change="restoreFile"></div>
     ${!isElectron ? `<p class="tiny muted" style="margin-top:8px">${L("في التلفون: التنبيهات تخدم كي يكون التطبيق محلول.", "Sur le téléphone : les rappels fonctionnent quand l'app est ouverte.")}</p>` : `<p class="tiny muted" style="margin-top:8px">${L("في الـPC: كي تسكّر النافذة، التطبيق يبقى يخدم في الخلفية (حذا الساعة) باش يبعثلك التنبيهات.", "Sur PC : en fermant la fenêtre, l'app reste active près de l'horloge pour envoyer les rappels.")}</p>`}
@@ -93,6 +93,8 @@
   App.LocalBanner = () => {
     let fresh = false; try { fresh = !localStorage.getItem("nhari:settings") || !JSON.parse(localStorage.getItem("nhari:settings")).name; } catch (e) { fresh = true; }
     let lastB = ""; try { lastB = localStorage.getItem("nhari:lastBackup") || ""; } catch (e) { /* ignore */ }
+    const setup = App.SetupBanner ? App.SetupBanner(fresh) : "";
+    if (setup) return setup;
     if (fresh) return `<div class="card stripe saffron" style="margin-bottom:14px"><h3>${I.copy}${L("مرحبا بيك في Nhari", "Bienvenue dans Nhari")}</h3><p class="small">${L("باش تلقى البيانات متاعك (البرنامج، القراية، الجيم…): رجّع ملف النسخة nhari-backup.json.", "Pour retrouver tes données (programme, cours, salle…) : restaure le fichier nhari-backup.json.")}</p>
       <div class="row" style="margin-top:8px"><label class="btn primary" for="restore-first">${L("رجّع من ملف", "Restaurer depuis un fichier")}</label><input id="restore-first" class="hide" type="file" accept="application/json,.json" data-change="restoreFile"></div></div>`;
     if (U.dow() === 0 && lastB !== U.dkey()) return `<div class="card" style="margin-bottom:14px"><div class="row between"><span class="small">${L("نهار الأحد: نزّل نسخة احتياطية.", "Dimanche : fais ta sauvegarde.")}</span><button class="btn sm" data-act="backupFile">${L("نزّل", "Télécharger")}</button></div></div>`;

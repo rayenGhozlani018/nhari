@@ -133,7 +133,7 @@
   };
   App.SyncPrefs = () => {
     const c = config();
-    const head = `<h3>${I.link}${L("ربط الـPC والتلفون", "Relier le PC et le téléphone")}</h3>`;
+    const head = `<h3 id="sync-card">${I.link}${L("ربط الـPC والتلفون", "Relier le PC et le téléphone")}</h3>`;
     if (!c) return `<div class="card stripe saffron" style="grid-column:1/-1">${head}
       <p class="small muted">${L("الصق هنا الـconfig متاع مشروع Firebase (const firebaseConfig = {…}).", "Colle ici la config de ton projet Firebase (const firebaseConfig = {…}).")}</p>
       <form data-form="syncCfg" class="stack" style="margin-top:8px"><textarea id="sy-cfg" name="cfg" style="min-height:110px" dir="ltr" placeholder="const firebaseConfig = { apiKey: ..., projectId: ... }"></textarea><button class="btn primary" type="submit">${L("سجّل", "Enregistrer")}</button></form></div>`;
