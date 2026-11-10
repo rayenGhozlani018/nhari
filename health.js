@@ -303,7 +303,7 @@
   const lvlMul = () => ({ easy: 0.7, normal: 1, hard: 1.3 }[Store.doc("settings").sport.level] || 1);
   const scaled = (it) => { const m = lvlMul(); return { key: it[0], sets: it[1], reps: it[2] ? Math.max(4, Math.round(it[2] * m)) : null, sec: it[3] ? Math.round(it[3] * (it[3] > 300 ? 1 : m) / 5) * 5 : null, rest: it[4] }; };
   const fmtSec = (s) => s >= 60 ? Math.round(s / 60) + " " + L("دقيقة", "min") : s + " " + L("ثانية", "s");
-  const GYMP = () => (window.NhariGym ? window.NhariGym.PROGRAM : {});
+  const GYMP = () => Object.assign({}, window.NhariGym ? window.NhariGym.PROGRAM : {}, Store.doc("sport").prog || {});
   App.S = {
     gym() { return Store.doc("settings").sport.mode === "gym" && !!window.NhariGym; },
     dayKey(d = new Date()) {
@@ -383,25 +383,29 @@
     }
     return `<span class="pill">${L("نفس الوزن، حاول تزيد مرة", "Même charge, vise +1 rep")}</span>`;
   }
+  const weekProg = (sp, d) => (sp.prog && sp.prog[d]) || window.NhariGym.PROGRAM[d];
+  App.gymProgFor = (d, key) => { const sp = Store.doc("sport"); return (key && sp.custom && sp.custom[key]) || weekProg(sp, d); };
   function viewGym() {
     const G = window.NhariGym, sp = Store.doc("sport"), now = new Date(), dow = U.dow(now), tk = U.dkey(now);
     const order = [1, 2, 3, 4, 5, 6, 0];
     const monday = U.addDays(now, -((dow + 6) % 7));
     const wdn = [L("أحد", "Dim"), L("اثنين", "Lun"), L("ثلاثاء", "Mar"), L("أربعاء", "Mer"), L("خميس", "Jeu"), L("جمعة", "Ven"), L("سبت", "Sam")];
-    const strip = order.map((d, i) => { const k = U.dkey(U.addDays(monday, i)); const pd = G.PROGRAM[d]; return `<div class="d ${d === dow ? "today" : ""} ${sp.done[k] ? "done" : ""}"><b>${wdn[d]}</b>${U.esc(L(pd.ar, pd.fr))}</div>`; }).join("");
+    const strip = order.map((d, i) => { const k = U.dkey(U.addDays(monday, i)); const pd = d === dow ? App.gymProgFor(d, k) : weekProg(sp, d); return `<div class="d ${d === dow ? "today" : ""} ${sp.done[k] ? "done" : ""}"><b>${wdn[d]}</b>${U.esc(L(pd.ar, pd.fr))}</div>`; }).join("");
     const pick = App.uiState.gymDay != null ? +App.uiState.gymDay : dow;
-    const pd = G.PROGRAM[pick];
+    const pd = pick === dow ? App.gymProgFor(dow, tk) : weekProg(sp, pick);
+    const custom = pick === dow && !!(sp.custom && sp.custom[tk]);
     const done = App.S.doneToday();
     const last = H.lastBg();
     const todayLog = (sp.log || {})[tk] || {};
     const crea = sp.creatine || {};
     const creaWeek = order.map((d, i) => !!crea[U.dkey(U.addDays(monday, i))]);
     const estMin = Math.round(U.sum(pd.items, it => it.sets * (45 + it.rest)) / 60) + 8;
-    const swap = `<label class="f" style="flex-direction:row;align-items:center;gap:8px">${L("حصة", "Séance")}<select data-change="gymDay" style="width:auto">${order.map(d => `<option value="${d}" ${d === pick ? "selected" : ""}>${wdn[d]} — ${U.esc(L(G.PROGRAM[d].ar, G.PROGRAM[d].fr))}</option>`).join("")}</select></label>`;
+    const swap = `<label class="f" style="flex-direction:row;align-items:center;gap:8px">${L("حصة", "Séance")}<select data-change="gymDay" style="width:auto">${order.map(d => `<option value="${d}" ${d === pick ? "selected" : ""}>${wdn[d]} — ${U.esc(L(weekProg(sp, d).ar, weekProg(sp, d).fr))}</option>`).join("")}</select></label>`;
     let html = `<div class="card" style="margin-bottom:14px"><div class="row between" style="margin-bottom:10px"><h3 style="margin:0">${L("برنامج الجيم — New Life Fitness", "Programme salle — New Life Fitness")}</h3>${swap}</div><div class="weekstrip">${strip}</div></div>
       <div class="grid g2">
         <div class="card stripe ${done ? "good" : "accent"}"><h3>${I.run}${L("حصة اليوم", "Séance du jour")}</h3>
           <div class="mid">${U.esc(L(pd.ar, pd.fr))}</div>
+          ${custom ? `<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px"><span class="pill saffron">${L("حصة اليوم مبدّلة", "Séance du jour modifiée")}</span><button class="btn sm" data-act="gymKeep">${L(`خلّيها حصة كل ${wdn[dow]}`, `La garder chaque ${wdn[dow]}`)}</button><button class="btn sm ghost" data-act="gymReset">${L("رجّع البرنامج العادي", "Revenir au programme")}</button></div>` : ""}
           ${pd.rest ? `<p class="small muted" style="margin-top:6px">${L("نهار راحة للعضلات. مشي خفيف 15–20 دقيقة بعد الماكلة يعاون السكر.", "Repos musculaire. 15–20 min de marche après un repas aide la glycémie.")}</p>` : `
           <p class="small muted">${pd.items.length} ${L("تمارين", "exercices")} · ~${estMin} ${L("دقيقة", "min")}</p>
           <div class="alertbox ${last && Date.now() - last.ts < 3600000 ? (last.bg < 100 || last.bg > 250 ? "warn" : "good") : "info"}" style="margin-top:10px"><b>${L("قبل الجيم: قيس السكر", "Avant la salle : mesure ta glycémie")}</b>${L("تحت 100: كول 15–30 غ (3 تمرات). فوق 250: ما تعملش حصة قوية. خلّي سكر سريع وماء في الساك.", "Sous 100 : 15–30 g de glucides (3 dattes). Au-dessus de 250 : pas de séance intense. Sucre rapide et eau dans le sac.")}${last && Date.now() - last.ts < 3600000 ? `<div class="small" style="margin-top:4px">${L("آخر قياس", "Dernière mesure")}: <b>${U.esc(U.bgFmt(last.bg))}</b></div>` : ""}</div>
@@ -435,6 +439,14 @@
     return html;
   }
   App.changes.gymDay = (el) => { App.uiState.gymDay = +el.value === U.dow() ? null : +el.value; App.render(); };
+  App.acts.gymKeep = () => {
+    const sp = Store.doc("sport"), tk = U.dkey(), d = U.dow(), cu = sp.custom && sp.custom[tk]; if (!cu) return;
+    sp.prog = sp.prog || {}; sp.prog[d] = { ar: cu.ar, fr: cu.fr, items: cu.items.map(it => Object.assign({}, it)) };
+    Store.save("sport"); App.toast(L("تبدّل البرنامج", "Programme mis à jour"), L("الحصة هذي ولات حصة النهار هذا كل جمعة.", "Cette séance devient celle de ce jour chaque semaine."), "good"); App.render();
+  };
+  App.acts.gymReset = () => App.confirm(L("ترجع لحصة البرنامج العادي اليوم؟ السيريات اللي سجّلتهم يبقاو.", "Revenir à la séance du programme aujourd'hui ? Les séries notées restent."), () => {
+    const sp = Store.doc("sport"); if (sp.custom) delete sp.custom[U.dkey()]; Store.save("sport"); App.render();
+  });
   function setEntry(ex, i) {
     const sp = Store.doc("sport"), tk = U.dkey();
     sp.log = sp.log || {}; sp.log[tk] = sp.log[tk] || {}; sp.log[tk][ex] = sp.log[tk][ex] || [];

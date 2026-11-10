@@ -4,16 +4,18 @@
   const CATS = [
     ["food", "ماكلة", "Alimentation"], ["transport", "نقل", "Transport"], ["health", "صحة ودواء", "Santé / insuline"],
     ["study", "قراية", "Études"], ["family", "عائلة", "Famille"], ["home", "دار وفواتير", "Maison / factures"],
-    ["fun", "ترفيه", "Loisirs"], ["clothes", "لبسة", "Vêtements"], ["sadaqa", "صدقة", "Sadaqa"], ["work", "مواد ومازوط الخدمة", "Matériel / gasoil (travail)"], ["car", "كرهبة (صيانة وقطع)", "Voiture (entretien, pièces)"], ["other", "أخرى", "Autre"]
+    ["fun", "ترفيه", "Loisirs"], ["clothes", "لبسة", "Vêtements"], ["gift", "هدايا", "Cadeaux"], ["supp", "مكمّلات (زنك، كرياتين…)", "Compléments (zinc, créatine…)"], ["sadaqa", "صدقة", "Sadaqa"], ["work", "مواد ومازوط الخدمة", "Matériel / gasoil (travail)"], ["car", "كرهبة (صيانة وقطع)", "Voiture (entretien, pièces)"], ["other", "أخرى", "Autre"]
   ];
   const catName = (k) => { const c = CATS.find(x => x[0] === k) || CATS[CATS.length - 1]; return L(c[1], c[2]); };
+  App.moneyCats = CATS; App.catName = catName;
   const CHARGE_SUGGEST = [["كراء", "Loyer"], ["نقل", "Transport"], ["تلفون وانترنت", "Téléphone / internet"], ["أنسولين وأشرطة", "Insuline / bandelettes"], ["ماكلة الدار", "Courses"], ["ضو وماء", "STEG / SONEDE"], ["كريدي", "Crédit"]];
   const WD = () => [L("أحد", "Dim"), L("اثنين", "Lun"), L("ثلاثاء", "Mar"), L("أربعاء", "Mer"), L("خميس", "Jeu"), L("جمعة", "Ven"), L("سبت", "Sam")];
 
   /* ---------- cash in hand, money on the way, big payments (fac fees…) ---------- */
   const r3 = (x) => Math.round(x * 1000) / 1000;
   const monthsBetween = (a, b) => { const [ya, ma] = a.split("-").map(Number), [yb, mb] = b.split("-").map(Number); return (yb - ya) * 12 + (mb - ma); };
-  const NOT_PERSONAL = ["work", "car"]; // work tools: not taken from the personal budget
+  const NOT_PERSONAL = App.NOT_PERSONAL = ["work", "car", "supp"]; // work tools, car, supplements: their own budgets, not the personal one
+  const personalExp = (x) => !NOT_PERSONAL.includes(x.cat) && !x.env; // x.env: paid from a savings pot
   const MW = App.MW = {
     cfg() { const c = Store.doc("moneycfg"); if (!Array.isArray(c.pending)) c.pending = []; if (!Array.isArray(c.goals)) c.goals = []; return c; },
     on() { return !!MW.cfg().wallet; },
@@ -51,13 +53,14 @@
     const chargesTotal = U.sum(cfg.charges, c => c.amount);
     const savings = +cfg.savings || 0, personal = +cfg.personal || 0, salary = +cfg.salary || 0;
     const goalsMonthly = U.sum(MW.cfg().goals, g => MW.goalPlan(g, now).perMonth);
-    const need = chargesTotal + savings + personal + goalsMonthly;
+    const env = App.envMonthly ? App.envMonthly(now) : { total: 0, save: 0 };
+    const need = chargesTotal + savings + personal + goalsMonthly + env.total;
     const workTarget = Math.max(0, need - salary);
     const earned = U.sum(m.incomes, x => x.amount);
     const earnedToday = U.sum(m.incomes.filter(x => x.date === tk), x => x.amount);
     const spentVar = U.sum(m.expenses, x => x.amount);
-    const spentToday = U.sum(m.expenses.filter(x => x.date === tk && !NOT_PERSONAL.includes(x.cat)), x => x.amount);
-    const spentPersonal = U.sum(m.expenses.filter(x => !NOT_PERSONAL.includes(x.cat)), x => x.amount);
+    const spentToday = U.sum(m.expenses.filter(x => x.date === tk && personalExp(x)), x => x.amount);
+    const spentPersonal = U.sum(m.expenses.filter(personalExp), x => x.amount);
     const paidCharges = U.sum(cfg.charges.filter(c => m.paid[c.id]), c => c.amount);
     const isWork = (d) => cfg.workDays.includes(U.dow(d)) && !cfg.offDays[U.dkey(d)];
     let daysLeft = 0;
@@ -78,7 +81,7 @@
     const perDay = Math.floor(Math.max(0, personalLeft) / calDaysLeft * 2) / 2;
     const profit = salary + earned - paidCharges - spentVar;
     const nextWorkDay = (() => { for (let i = 1; i < 14; i++) { const d = U.addDays(now, i); if (isWork(d)) return d; } return null; })();
-    return { goalsMonthly, spentPersonal, cfg, m, chargesTotal, savings, personal, salary, need, workTarget, earned, earnedToday, spentVar, spentToday, paidCharges, daysLeft, workToday, dailyObj, todayObj, todayLeft, hourly, hoursNeeded, maxHours, overload, shortfall, personalLeft, perDay, profit, calDaysLeft, nextWorkDay, remainingBeforeToday };
+    return { goalsMonthly, env, spentPersonal, cfg, m, chargesTotal, savings, personal, salary, need, workTarget, earned, earnedToday, spentVar, spentToday, paidCharges, daysLeft, workToday, dailyObj, todayObj, todayLeft, hourly, hoursNeeded, maxHours, overload, shortfall, personalLeft, perDay, profit, calDaysLeft, nextWorkDay, remainingBeforeToday };
   }
   App.moneyCalc = calc;
 
@@ -155,6 +158,7 @@
     return `<div class="card stripe accent" style="grid-column:1/-1">
       <div class="row between"><h3>${I.money}${L("الفلوس اللي عندك توا", "L'argent que tu as maintenant")}</h3><button class="btn sm ghost" data-act="walletFix">${L("صحّح", "Corriger")}</button></div>
       <div class="big" style="color:${bal < 0 ? "var(--bad)" : "inherit"}">${U.money(bal)}</div>
+      ${App.envReservedLine ? App.envReservedLine(bal) : ""}
       ${pend.length || planned.length || unpaid.length ? `<div class="list" style="margin-top:10px">
         ${pend.map(p => `<div class="li"><span class="pill good">${L("جاية", "À venir")}</span><span class="grow small">${U.esc(p.label)}</span><span class="amt" style="color:var(--good)">+${U.money(p.amount)}</span><button class="btn sm" data-act="pendGot" data-id="${p.id}">${L("وصلت", "Reçu")}</button></div>`).join("")}
         ${planned.map(x => `<div class="li"><span class="pill accent">${L("باش تخلّص", "À payer")}</span><span class="grow small">${U.esc(x.g.label)}</span><span class="amt" style="color:var(--bad)">−${U.money(x.amt)}</span><button class="btn sm" data-act="goalPayNext" data-id="${x.g.id}">${L("خلّصت", "Payé")}</button></div>`).join("")}
@@ -239,8 +243,8 @@
       <div class="grid g2" style="margin-top:14px">
         <div class="card"><h3>${L("المدخول كل نهار", "Revenus par jour")}</h3>${chart(c)}</div>
         <div class="card"><h3>${L("التوفير", "Épargne")}</h3>
-          <div class="row between"><span class="mid">${U.money(Math.min(savedSoFar, c.savings))} / ${U.money(c.savings)}</span><span class="pill ${savedSoFar >= c.savings ? "good" : "saffron"}">${c.savings ? Math.round(U.clamp(savedSoFar / c.savings * 100, 0, 100)) : 0}%</span></div>
-          <div class="bar saffron" style="margin:10px 0"><i style="width:${c.savings ? U.clamp(savedSoFar / c.savings * 100, 0, 100) : 0}%"></i></div>
+          ${(() => { const sv = c.savings + (c.env.save || 0); return `<div class="row between"><span class="mid">${U.money(Math.min(savedSoFar, sv))} / ${U.money(sv)}</span><span class="pill ${savedSoFar >= sv ? "good" : "saffron"}">${sv ? Math.round(U.clamp(savedSoFar / sv * 100, 0, 100)) : 0}%</span></div>
+          <div class="bar saffron" style="margin:10px 0"><i style="width:${sv ? U.clamp(savedSoFar / sv * 100, 0, 100) : 0}%"></i></div>`; })()}
           <h3 style="margin-top:14px">${L("وين مشات الفلوس", "Où va l'argent")}</h3>
           ${cats.length ? cats.map(([k, v]) => `<div class="row between small" style="margin-top:6px"><span>${U.esc(catName(k))}</span><span class="num">${U.money(v)}</span></div><div class="bar" style="height:7px"><i style="width:${v / maxCat * 100}%"></i></div>`).join("") : `<div class="empty">${L("ما فما حتى مصروف.", "Aucune dépense.")}</div>`}
         </div>
@@ -258,6 +262,7 @@
           <div class="li"><span class="grow">${L("توفير", "Épargne")}</span><span class="amt">${U.money(c.savings)}</span></div>
           <div class="li"><span class="grow">${L("مصروف شخصي (ماكلة برّا، ترفيه…)", "Dépenses perso (sorties, loisirs…)")}</span><span class="amt">${U.money(c.personal)}</span></div>
           ${MW.cfg().goals.filter(g => MW.goalPlan(g).perMonth > 0).map(g => `<div class="li"><span class="grow">${L("قسط", "Tranche")} · ${U.esc(g.label)}</span><span class="amt">${U.money(MW.goalPlan(g).perMonth)}</span></div>`).join("")}
+          ${(c.env.lines || []).map(x => `<div class="li"><span class="grow">${U.esc(x.label)}</span><span class="amt">${U.money(x.amount)}</span></div>`).join("")}
           <div class="li"><b class="grow">${L("المجموع", "Total")}</b><b class="amt">${U.money(c.need)}</b></div>
           ${c.salary ? `<div class="li"><span class="grow">${L("− الشهرية", "− Salaire")}</span><span class="amt">${U.money(c.salary)}</span></div>` : ""}
           <div class="li"><b class="grow">${L("لازمك تجيب من الخدمة", "À gagner par le travail")}</b><b class="amt" style="color:var(--accent)">${U.money(c.workTarget)}</b></div>

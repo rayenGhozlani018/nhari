@@ -102,6 +102,7 @@ a { color: var(--accent); }
 .card.flat { box-shadow: none; }
 .card h3 { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .card h3 svg { width: 18px; height: 18px; color: var(--accent); flex: none; }
+summary svg { width: 16px; height: 16px; vertical-align: -3px; margin-inline-end: 4px; }
 .card .sub { color: var(--muted); font-size: .85rem; }
 .stripe { border-inline-start: 4px solid var(--line); }
 .stripe.good { border-inline-start-color: var(--good); }
@@ -304,7 +305,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .hide { display: none !important; }
 
 .setrow { display: grid; grid-template-columns: 14px 1fr auto 1fr 34px; gap: 6px; align-items: center; padding: 4px 0; }
-.setrow input { padding: 6px 8px; text-align: center; }
+.setrow input { padding: 6px 4px; text-align: center; direction: ltr; min-width: 0; font-variant-numeric: tabular-nums; }
 .setrow.ok input { background: var(--good-soft); border-color: var(--good); }
 .iconbtn.sm { width: 34px; height: 34px; }
 .iconbtn.on { background: var(--good); color: #fff; border-color: var(--good); }

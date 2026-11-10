@@ -214,6 +214,35 @@
       props: [],
       a: { h: [89, 66], n: [80, 70], p: [52, 79], k1: [36, 84], f1: [20, 90], k2: [36, 85], f2: [20, 91], e1: [80, 90], w1: [95, 90], e2: [79, 90], w2: [94, 90] },
       b: { h: [89, 65], n: [80, 69], p: [52, 77], k1: [36, 83], f1: [20, 90], k2: [36, 84], f2: [20, 91], e1: [80, 90], w1: [95, 90], e2: [79, 90], w2: [94, 90] }
+    },
+    lat_raise_cable: {
+      ar: "Lateral Raise (كابل)", fr: "Élévation latérale à la poulie", mus: { ar: "الكتف الجانبي", fr: "Deltoïde latéral" }, front: true,
+      tip: { ar: "الكابل من الجنب الآخر، ارفع يدك للجنب لحد الكتف، المرفق مطوي شوية، وهبّط بشوية. الكابل يخلي الشد من الأول للآخر.", fr: "Câble venant du côté opposé : monte le bras sur le côté jusqu'à l'épaule, coude un peu fléchi, descends lentement. Tension continue." },
+      props: [{ t: "cable", from: [40, 90], to: "w2" }, { t: "grip", at: "w2" }],
+      a: m(FRONT_LEGS, { h: [60, 15], n: [60, 26], e1: [53, 39], w1: [52, 52], e2: [66, 39], w2: [64, 52] }),
+      b: m(FRONT_LEGS, { h: [60, 15], n: [60, 26], e1: [53, 39], w1: [52, 52], e2: [73, 28], w2: [86, 29] })
+    },
+    seated_db_press: {
+      ar: "Shoulder Press (قاعد، دمبل)", fr: "Développé épaules assis haltères", mus: { ar: "الكتف (الأمامي والجانبي)، ترايسبس", fr: "Épaules, triceps" }, front: true,
+      tip: { ar: "ظهرك لاصق في الكرسي، الدمبل في مستوى الأذنين. ادفع لفوق بلا ما تلصق الدمبلات، وهبّط بشوية.", fr: "Dos collé au dossier, haltères à hauteur des oreilles. Pousse vers le haut sans les cogner, redescends lentement." },
+      vb: "0 -10 120 110",
+      props: [{ t: "rect", x: 52, y: 20, w: 16, h: 40, cls: "bench" }, { t: "db", at: "w1" }, { t: "db", at: "w2" }],
+      a: m({ h: [60, 18], n: [60, 28], e1: [45, 32], w1: [45, 19], e2: [75, 32], w2: [75, 19] }, FRONT_SEAT),
+      b: m({ h: [60, 18], n: [60, 28], e1: [50, 15], w1: [53, 2], e2: [70, 15], w2: [67, 2] }, FRONT_SEAT)
+    },
+    rev_cable: {
+      ar: "Reverse Cable Fly", fr: "Oiseau à la poulie (reverse fly)", mus: { ar: "الكتف الخلفي، أعلى الظهر", fr: "Deltoïde arrière, haut du dos" }, front: true,
+      tip: { ar: "الكابلات مقاطعين قدامك في مستوى الكتف. حل اليدين للجنب والمرفق مطوي شوية، اعصر الكتف الخلفي وارجع بشوية.", fr: "Câbles croisés devant toi à hauteur d'épaule. Ouvre les bras sur les côtés, coudes un peu fléchis, serre l'arrière d'épaule, reviens lentement." },
+      props: [{ t: "cable", from: [100, 30], to: "w1" }, { t: "cable", from: [20, 30], to: "w2" }, { t: "grip", at: "w1" }, { t: "grip", at: "w2" }],
+      a: m(FRONT_LEGS, { h: [60, 15], n: [60, 26], e1: [52, 33], w1: [62, 34], e2: [68, 33], w2: [58, 34] }),
+      b: m(FRONT_LEGS, { h: [60, 15], n: [60, 26], e1: [46, 29], w1: [32, 29], e2: [74, 29], w2: [88, 29] })
+    },
+    incline_hammer: {
+      ar: "Hammer Curl مايل (دمبل)", fr: "Curl marteau incliné haltères", mus: { ar: "Brachial، Biceps، الساعد", fr: "Brachial, biceps, avant-bras" },
+      tip: { ar: "على كرسي مايل، الإبهام لفوق، اليدين متدليين. اطلع بلا ما تقدّم المرفق.", fr: "Sur banc incliné, pouces vers le haut, bras pendants. Monte sans avancer le coude." },
+      props: [SEAT, { t: "line", x1: 40, y1: 66, x2: 28, y2: 30, cls: "frame" }, { t: "db", at: "w1", vert: true }],
+      a: m({ h: [31, 29], n: [36, 38], p: [46, 64], e1: [34, 52], w1: [33, 66], e2: [35, 52], w2: [34, 66] }, LEGS_SEAT),
+      b: m({ h: [31, 29], n: [36, 38], p: [46, 64], e1: [34, 52], w1: [45, 45], e2: [35, 52], w2: [46, 45] }, LEGS_SEAT)
     }
   };
 
