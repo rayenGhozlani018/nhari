@@ -9,6 +9,7 @@ import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
 import android.media.AudioManager;
 import android.media.MediaPlayer;
+import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -61,7 +62,8 @@ public class PlayerService extends Service implements TextToSpeech.OnInitListene
     public void onCreate() {
         super.onCreate();
         am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
-        tts = new TextToSpeech(this, this);
+        // Google's engine speaks Arabic on most phones; some phones default to an engine without it
+        tts = Voice.hasGoogle(this) ? new TextToSpeech(this, this, Voice.GOOGLE) : new TextToSpeech(this, this);
     }
 
     @Override
@@ -132,8 +134,7 @@ public class PlayerService extends Service implements TextToSpeech.OnInitListene
     @Override
     public void onInit(int status) {
         if (status == TextToSpeech.SUCCESS && tts != null) {
-            int r = tts.setLanguage(new Locale("ar"));
-            ttsReady = r != TextToSpeech.LANG_MISSING_DATA && r != TextToSpeech.LANG_NOT_SUPPORTED;
+            ttsReady = Voice.useArabic(tts);
             tts.setAudioAttributes(attrs(cur != null && "alarm".equals(cur.optString("stream"))));
             tts.setSpeechRate(0.9f);
             tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
@@ -151,11 +152,25 @@ public class PlayerService extends Service implements TextToSpeech.OnInitListene
     }
 
     private void speak(String text) {
-        if (ttsFailed) { nextItem(); return; }
+        if (ttsFailed) { chime(); return; }
         if (!ttsReady) { pendingSpeech = text; return; }
         updateNotif(text);
         Bundle p = new Bundle();
         tts.speak(text, TextToSpeech.QUEUE_FLUSH, p, "u" + token);
+    }
+
+    /** No Arabic voice on this phone: a short notification sound instead, so the reminder is still heard. */
+    private void chime() {
+        final int my = token;
+        try {
+            mp = new MediaPlayer();
+            mp.setAudioAttributes(attrs(cur != null && "alarm".equals(cur.optString("stream"))));
+            mp.setDataSource(this, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION));
+            mp.setOnPreparedListener(MediaPlayer::start);
+            mp.setOnCompletionListener(m -> { if (my == token) h.post(this::nextItem); });
+            mp.setOnErrorListener((m, w, x) -> { if (my == token) h.post(this::nextItem); return true; });
+            mp.prepareAsync();
+        } catch (Exception e) { h.post(this::nextItem); }
     }
 
     /* ---------- audio ---------- */

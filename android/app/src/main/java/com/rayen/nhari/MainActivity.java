@@ -41,6 +41,7 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         Notifs.channels(this);
+        Voice.check(this);
         web = new WebView(this);
         web.setBackgroundColor(Color.parseColor("#0E1630"));
         setContentView(web);
@@ -124,6 +125,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (Voice.status == null || "missing".equals(Voice.status)) Voice.check(this);
         if (loaded) notifyWeb("NhariNativeResume");
     }
 

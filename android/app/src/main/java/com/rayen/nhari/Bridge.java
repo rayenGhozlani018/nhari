@@ -29,6 +29,7 @@ final class Bridge {
             o.put("battery", pm != null && pm.isIgnoringBatteryOptimizations(act.getPackageName()));
             o.put("sound", Notifs.soundAllowed(act));
             o.put("count", EventStore.events(act).length());
+            o.put("tts", Voice.status == null ? "checking" : Voice.status);
             JSONObject n = EventStore.next(act);
             if (n != null) o.put("next", new JSONObject().put("at", n.optLong("at")).put("title", n.optString("title")));
         } catch (Exception ignored) { }
@@ -81,6 +82,25 @@ final class Bridge {
 
     @JavascriptInterface
     public void openAppSettings() { act.runOnUiThread(act::openAppSettings); }
+
+    /** Install the Arabic voice: the engine's own "install voice data" screen, else the system TTS settings. */
+    @JavascriptInterface
+    public void installVoice() {
+        act.runOnUiThread(() -> {
+            Voice.status = null;
+            try {
+                Intent i = new Intent(android.speech.tts.TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA);
+                if (Voice.hasGoogle(act)) i.setPackage(Voice.GOOGLE);
+                act.startActivity(i);
+            } catch (Exception e) {
+                try { act.startActivity(new Intent("com.android.settings.TTS_SETTINGS")); }
+                catch (Exception e2) { act.openAppSettings(); }
+            }
+        });
+    }
+
+    @JavascriptInterface
+    public void recheckVoice() { act.runOnUiThread(() -> Voice.check(act)); }
 
     @JavascriptInterface
     public void openUrl(String url) { act.runOnUiThread(() -> act.openExternal(Uri.parse(url))); }
