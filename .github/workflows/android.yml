@@ -28,24 +28,30 @@ jobs:
         with:
           gradle-version: "8.9"
 
-      - name: Unlock the signing key
+      - name: Build the APK (signed when the secret opens the key)
         id: key
-        env:
-          NHARI_KS_PASS: ${{ secrets.NHARI_KS_PASS }}
-        run: |
-          if [ -z "$NHARI_KS_PASS" ]; then
-            echo "signed=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Secret NHARI_KS_PASS missing: the code is only compiled, no APK is published."
-          else
-            openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in android/app/nhari.jks.enc -out android/app/nhari.jks -pass env:NHARI_KS_PASS
-            echo "signed=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Build the APK
         working-directory: android
         env:
-          NHARI_KS_PASS: ${{ secrets.NHARI_KS_PASS }}
-        run: gradle --no-daemon assembleRelease -Pvc=${{ github.run_number }}
+          RAW_PASS: ${{ secrets.NHARI_KS_PASS }}
+        run: |
+          # the password is only letters and digits: drop spaces, line breaks or quotes pasted with it
+          clean="$(printf '%s' "$RAW_PASS" | tr -cd 'A-Za-z0-9')"
+          echo "secret: ${#RAW_PASS} characters, ${#clean} kept"
+          signed=false
+          if [ -n "$clean" ]; then
+            echo "::add-mask::$clean"
+            if NHARI_KS_PASS="$clean" openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in app/nhari.jks.enc -out app/nhari.jks -pass env:NHARI_KS_PASS 2>/dev/null; then
+              signed=true
+            else
+              rm -f app/nhari.jks
+              echo "::error::NHARI_KS_PASS does not open the signing key: paste the content of NHARI_KS_PASS.txt again (Update secret)."
+            fi
+          else
+            echo "::warning::Secret NHARI_KS_PASS missing: the code is only compiled, no APK is published."
+          fi
+          echo "signed=$signed" >> "$GITHUB_OUTPUT"
+          if [ "$signed" = true ]; then export NHARI_KS_PASS="$clean"; fi
+          gradle --no-daemon assembleRelease -Pvc=${{ github.run_number }}
 
       - name: Forget the key
         if: always()
@@ -66,5 +72,5 @@ jobs:
       - name: Needs the signing secret
         if: steps.key.outputs.signed != 'true'
         run: |
-          echo "::error::Add the repository secret NHARI_KS_PASS (Settings > Secrets and variables > Actions), then run this workflow again."
+          echo "::error::No signed APK: the repository secret NHARI_KS_PASS is missing or wrong (Settings > Secrets and variables > Actions)."
           exit 1
