@@ -1,0 +1,44 @@
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+    paths: ["android/**", ".github/workflows/android.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-apk
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Build the APK
+        working-directory: android
+        run: gradle --no-daemon assembleRelease -Pvc=${{ github.run_number }}
+
+      - name: Publish it as the latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk nhari.apk
+          gh release delete android --yes --cleanup-tag || true
+          gh release create android nhari.apk \
+            --title "Nhari Android 1.0.${{ github.run_number }}" \
+            --notes "Application Android de Nhari (adhan, adhkar, rappels, thumun ×10). Télécharger nhari.apk sur le téléphone et l'installer." \
+            --target "${{ github.sha }}"
