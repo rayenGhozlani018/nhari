@@ -4,6 +4,7 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.app.RemoteInput;
 import android.content.Context;
 import android.content.Intent;
 import android.media.AudioManager;
@@ -17,6 +18,7 @@ final class Notifs {
     static final String CH_ALERT = "nhari_alert";
     static final String CH_QUIET = "nhari_quiet";
     static final int ID_PLAYING = 4242;
+    static final int ID_ACT = 5151; // with a tag per reminder ("pray-2026-11-11-dhuhr", "bg-...", "gym-...")
 
     private Notifs() { }
 
@@ -76,7 +78,69 @@ final class Notifs {
             PendingIntent pi = PendingIntent.getForegroundService(c, ("listen" + id).hashCode(), play, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
             b.addAction(new Notification.Action.Builder(null, "▶ اسمع", pi).build());
         }
+        JSONObject a = e.optJSONObject("act");
+        if (a != null) {
+            // one notification with both: listen, and log it (prayed / glucose value / gym done)
+            String tag = a.optString("key", id);
+            addActs(c, b, a, tag);
+            long ttl = a.optLong("ttl", 0);
+            if (ttl > 0) b.setTimeoutAfter(ttl);
+            c.getSystemService(NotificationManager.class).notify(tag, ID_ACT, b.build());
+            Actions.posted(c, a, e.optLong("at", System.currentTimeMillis()));
+            return;
+        }
         c.getSystemService(NotificationManager.class).notify(idFor(id), b.build());
+    }
+
+    /** After an event played: "done?" with a button that logs it without opening the app. */
+    static void act(Context c, JSONObject e) {
+        JSONObject a = e == null ? null : e.optJSONObject("act");
+        if (a == null) return;
+        String tag = a.optString("key", "act");
+        Notification.Builder b = base(c, CH_QUIET, a.optString("title", e.optString("title", "Nhari")), a.optString("body", ""))
+                .setAutoCancel(true)
+                .setOnlyAlertOnce(true)
+                .setCategory(Notification.CATEGORY_REMINDER);
+        long ttl = a.optLong("ttl", 0);
+        if (ttl > 0) b.setTimeoutAfter(ttl);
+        addActs(c, b, a, tag);
+        c.getSystemService(NotificationManager.class).notify(tag, ID_ACT, b.build());
+        Actions.posted(c, a, e.optLong("at", System.currentTimeMillis()));
+    }
+
+    /** « ✅ صليت », « قست: ___ » (typed in the notification) or « ✅ عملتها ». */
+    static void addActs(Context c, Notification.Builder b, JSONObject a, String tag) {
+        String t = a.optString("t");
+        Intent i = new Intent(c, ActionReceiver.class).setAction(ActionReceiver.ACT_LOG)
+                .putExtra("act", a.toString()).putExtra("tag", tag);
+        int rc = ("log" + tag).hashCode();
+        if ("bg".equals(t)) {
+            int mutable = Build.VERSION.SDK_INT >= 31 ? PendingIntent.FLAG_MUTABLE : 0; // the typed value is added to the intent
+            PendingIntent pi = PendingIntent.getBroadcast(c, rc, i, PendingIntent.FLAG_UPDATE_CURRENT | mutable);
+            RemoteInput in = new RemoteInput.Builder(ActionReceiver.KEY_BG).setLabel(a.optString("label", "السكر")).build();
+            b.addAction(new Notification.Action.Builder(null, "قست: ___", pi).addRemoteInput(in).setAllowGeneratedReplies(false).build());
+        } else {
+            PendingIntent pi = PendingIntent.getBroadcast(c, rc, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            b.addAction(new Notification.Action.Builder(null, "pray".equals(t) ? "✅ صليت" : "✅ عملتها", pi).build());
+        }
+    }
+
+    /** Replaces the "done?" notification with a short confirmation (an inline reply must be answered). */
+    static void confirm(Context c, String tag, String title, String body) {
+        Notification.Builder b = base(c, CH_QUIET, title, body)
+                .setAutoCancel(true)
+                .setOnlyAlertOnce(true)
+                .setTimeoutAfter(body == null || body.isEmpty() ? 5000 : 20 * 60_000);
+        c.getSystemService(NotificationManager.class).notify(tag == null ? "act" : tag, ID_ACT, b.build());
+    }
+
+    /** Urgent, with sound: a low glucose value typed in a notification. */
+    static void alert(Context c, String tag, String title, String body) {
+        Notification.Builder b = base(c, CH_ALERT, title, body)
+                .setAutoCancel(true)
+                .setCategory(Notification.CATEGORY_ALARM)
+                .setTimeoutAfter(60 * 60_000);
+        c.getSystemService(NotificationManager.class).notify(tag, ID_ACT, b.build());
     }
 
     static void info(Context c, String title, String body) {

@@ -36,6 +36,7 @@ public class MainActivity extends Activity {
     private String geoOrigin;
     private String sharedJson; // screenshots shared from the gallery, picked up by the web app
     private boolean loaded = false;
+    private static MainActivity live; // the activity on screen, to apply a notification button at once
 
     @Override
     protected void onCreate(Bundle state) {
@@ -122,9 +123,21 @@ public class MainActivity extends Activity {
         if (loaded && sharedJson != null) notifyWeb("NhariNativeSharePending");
     }
 
+    static void poke() {
+        MainActivity a = live;
+        if (a != null && a.loaded) a.notifyWeb("NhariNativeActions");
+    }
+
+    @Override
+    protected void onPause() {
+        if (live == this) live = null;
+        super.onPause();
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
+        live = this;
         if (Voice.status == null || "missing".equals(Voice.status)) Voice.check(this);
         if (loaded) notifyWeb("NhariNativeResume");
     }
@@ -230,6 +243,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (live == this) live = null;
         if (web != null) { web.removeJavascriptInterface("NhariAndroid"); web.destroy(); }
         super.onDestroy();
     }

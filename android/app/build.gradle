@@ -14,23 +14,27 @@ android {
         versionName "1.0." + (project.findProperty("vc") ?: "1").toString()
     }
 
+    // The signing key is in the repo only encrypted (nhari.jks.enc). The build machine decrypts it with the
+    // NHARI_KS_PASS secret; without it the release APK is built unsigned (to check the code) and not published.
+    def ksPass = System.getenv("NHARI_KS_PASS")
+    def ksFile = file("nhari.jks")
+    def canSign = ksPass && ksFile.exists()
+
     signingConfigs {
-        // personal sideloaded app: the key lives in the repo so every build can update the installed app
         nhari {
-            storeFile file("nhari.jks")
-            storePassword "nhari-app-2026"
-            keyAlias "nhari"
-            keyPassword "nhari-app-2026"
+            if (canSign) {
+                storeFile ksFile
+                storePassword ksPass
+                keyAlias "nhari"
+                keyPassword ksPass
+            }
         }
     }
 
     buildTypes {
         release {
             minifyEnabled false
-            signingConfig signingConfigs.nhari
-        }
-        debug {
-            signingConfig signingConfigs.nhari
+            if (canSign) signingConfig signingConfigs.nhari
         }
     }
 

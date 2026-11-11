@@ -42,5 +42,6 @@ final class Scheduler {
         List<JSONObject> due = EventStore.takeDue(c, System.currentTimeMillis() + 30_000);
         scheduleNext(c);
         for (JSONObject e : due) Runner.fire(c, e, false);
+        try { NhariWidget.render(c); } catch (Exception ignored) { }
     }
 }

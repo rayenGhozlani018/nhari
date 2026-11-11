@@ -78,6 +78,7 @@
       ${pr ? `<div class="next"><div><div class="lbl">${L("الصلاة الجاية", "Prochaine prière")}: <b>${App.prName(pr.next.k)}</b> · ${App.prayer.hm(pr.next.at)}</div><div class="cd" data-cd="${pr.next.at.getTime()}">${U.dur(pr.next.at - now)}</div></div></div>
       <div class="prayrow">${["fajr", "sunrise", "dhuhr", "asr", "maghrib", "isha"].map(k => `<div class="p ${pr.cur && pr.cur.k === k ? "now" : ""} ${log[k] ? "done" : ""}">${App.prName(k)}<b>${App.prayer.hm(pr.t[k])}</b></div>`).join("")}</div>` : ""}
     </section>
+    ${App.Quick ? App.Quick.topCard() : ""}
 
     <div class="tiles">
       <a class="tile" href="#work"><span class="k">${I.work}${L("الخدمة", "Travail")}</span><span class="v">${c.workToday ? `${doneT}/${Math.max(need, doneT + open)}` : L("راحة", "Repos")}</span><span class="s">${c.workToday ? L(`لازمك ${need} تدخلات · ${U.money(c.todayObj)}`, `${need} interventions · ${U.money(c.todayObj)}`) : L("ما فماش خدمة اليوم", "pas de travail aujourd'hui")}</span></a>
@@ -91,11 +92,14 @@
     </div>
 
     <div class="grid g2" style="margin-top:14px;align-items:start">
+      <details class="fold" data-fold="tl" ${App.Quick ? App.Quick.open("tl") : "open"}><summary>${I.clock}${L("برنامج النهار كامل", "Tout le programme du jour")}</summary>
       <div class="card"><h3>${I.clock}${L("برنامج النهار (أوتوماتيك)", "Programme du jour (automatique)")}</h3>
         ${timeline()}
         <div class="row" style="margin-top:10px">${s.notify.enabled ? `<span class="pill good">${I.bell}${L("التنبيهات مفعّلة", "Rappels activés")}</span><button class="btn sm ghost" data-act="disableNotify">${L("وقّف", "Désactiver")}</button>` : `<button class="btn primary sm" data-act="enableNotify">${I.bell}${L("فعّل التنبيهات", "Activer les rappels")}</button>`}<a class="btn sm ghost" href="#prefs">${L("بدّل الأوقات", "Modifier les horaires")}</a></div>
         <p class="tiny muted" style="margin-top:6px">${L("البرنامج يتبنى وحدو كل نهار من أوقات الصلاة، الجيم، الخدمة والقراية. التنبيهات تخدم كي يكون التطبيق محلول.", "Le programme se construit chaque jour à partir des prières, de la salle, du travail et des cours. Les rappels fonctionnent quand l'app est ouverte.")}</p>
-      </div>
+        ${App.Quick ? App.Quick.modeChips() : ""}
+      </div></details>
+      <details class="fold" data-fold="more" ${App.Quick ? App.Quick.open("more") : "open"}><summary>${I.bell}${L("تذكيرات، اقتراحات وحديث اليوم", "Rappels, idées et hadith du jour")}</summary>
       <div class="stack">
         ${App.extCards("today")}
         ${App.Review ? App.Review.cards() : ""}
@@ -104,7 +108,7 @@
         </div>
         ${App.Disc ? `<div><div class="tiny muted" style="margin:0 4px 6px">${L("اقتراح ليك", "Une idée pour toi")}</div>${App.Disc.card(true)}</div>` : ""}
         ${App.hadithCard()}
-      </div>
+      </div></details>
     </div>`;
   }
   App.acts.goSub = (el) => { App.sub[el.dataset.tab] = el.dataset.v; if (location.hash === "#" + el.dataset.tab) App.go(el.dataset.tab); else location.hash = "#" + el.dataset.tab; };

@@ -237,7 +237,9 @@
   App.forms.bgAdd = (fd) => {
     origBg(fd);
     const mg = U.bgToMg(fd.bg); if (!(mg > 10 && mg < 70)) return;
-    const m = med(); m.hypo = { ts: Date.now(), bg: Math.round(mg), recheck: Date.now() + 15 * 60000, round: (m.hypo && Date.now() - m.hypo.ts < 3600000 ? (m.hypo.round || 1) + 1 : 1) }; Store.save("medical");
+    const t0 = fd.ts ? U.fromInput(fd.ts).getTime() : Date.now();
+    if (!(t0 > Date.now() - 20 * 60000)) return; // an old reading entered later: no 15-minute protocol any more
+    const m = med(); m.hypo = { ts: t0, bg: Math.round(mg), recheck: t0 + 15 * 60000, round: (m.hypo && t0 - m.hypo.ts < 3600000 ? (m.hypo.round || 1) + 1 : 1) }; Store.save("medical");
     hypoModal();
   };
   function hypoModal() {

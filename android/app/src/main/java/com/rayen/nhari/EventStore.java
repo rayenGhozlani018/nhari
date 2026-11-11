@@ -46,9 +46,17 @@ final class EventStore {
         prefs(c).edit().putString(K_OVERRIDES, o.toString()).apply();
     }
 
+    /** An event planned by the phone itself (id "x-..."), e.g. measuring again 15 min after a low value. */
+    static synchronized void addOne(Context c, JSONObject e) {
+        JSONArray a = events(c);
+        a.put(e);
+        saveEvents(c, a);
+    }
+
     /** Replace the whole plan with a new one from the app, keeping postponed / skipped events. */
     static synchronized void replace(Context c, JSONArray incoming) {
         long now = System.currentTimeMillis();
+        JSONArray before = events(c);
         JSONObject ov = overrides(c);
         // forget overrides older than two days
         JSONObject keptOv = new JSONObject();
@@ -74,6 +82,17 @@ final class EventStore {
                 if (e.optLong("at") < now - 60_000) continue;
                 out.put(e);
             }
+        }
+        // the phone's own events stay, unless the app planned the same recheck
+        for (int i = 0; i < before.length(); i++) {
+            JSONObject e = before.optJSONObject(i);
+            if (e == null || !e.optString("id").startsWith("x-") || e.optLong("at") < now) continue;
+            boolean dup = false;
+            for (int j = 0; incoming != null && j < incoming.length(); j++) {
+                JSONObject n = incoming.optJSONObject(j);
+                if (n != null && n.optString("id").startsWith("n-hypo") && Math.abs(n.optLong("at") - e.optLong("at")) < 5 * 60_000) dup = true;
+            }
+            if (!dup) out.put(e);
         }
         saveEvents(c, out);
     }

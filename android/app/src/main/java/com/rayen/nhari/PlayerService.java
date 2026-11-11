@@ -84,10 +84,12 @@ public class PlayerService extends Service implements TextToSpeech.OnInitListene
         if (ev == null) { if (cur == null) stopAll(); return START_NOT_STICKY; }
         if (cur != null && ev.optInt("prio", 0) > cur.optInt("prio", 0)) {
             // the adhan interrupts adhkar or recitation; the interrupted event is dropped
+            JSONObject cut = cur;
             releasePlayer();
             if (tts != null) tts.stop();
             queue.addFirst(ev);
             cur = null;
+            Notifs.act(this, cut);
             playNextEvent();
         } else {
             queue.add(ev);
@@ -122,7 +124,7 @@ public class PlayerService extends Service implements TextToSpeech.OnInitListene
         releasePlayer();
         idx++;
         if (cur == null) return;
-        if (idx >= items.length()) { abandonFocus(); playNextEvent(); return; }
+        if (idx >= items.length()) { JSONObject done = cur; abandonFocus(); Notifs.act(this, done); playNextEvent(); return; }
         JSONObject it = items.optJSONObject(idx);
         rep = 0;
         if (it == null) { nextItem(); return; }
@@ -319,8 +321,13 @@ public class PlayerService extends Service implements TextToSpeech.OnInitListene
 
     private void stopAll() {
         token++;
+        // stopped by the user: what had a "done?" button still gets it
+        JSONObject was = cur;
+        JSONObject[] rest = queue.toArray(new JSONObject[0]);
         queue.clear();
         cur = null;
+        if (was != null) Notifs.act(this, was);
+        for (JSONObject q : rest) Notifs.act(this, q);
         releasePlayer();
         if (tts != null) tts.stop();
         abandonFocus();

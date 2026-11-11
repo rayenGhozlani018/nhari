@@ -400,3 +400,16 @@ button.tile { font: inherit; text-align: start; cursor: pointer; border: 1px sol
   body.printing .report { border: 0; box-shadow: none; }
   body.printing { background: #fff; color: #000; }
 }
+
+/* quick actions, folds, tasbih */
+details.fold > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; font-weight: 700; padding: 10px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); margin-bottom: 10px; }
+details.fold > summary::-webkit-details-marker { display: none; }
+details.fold > summary::after { content: "▾"; margin-inline-start: auto; color: var(--muted); transition: transform .2s; }
+details.fold[open] > summary::after { transform: rotate(180deg); }
+details.fold > summary svg { width: 18px; height: 18px; color: var(--accent); }
+.qtop .qpend { padding-bottom: 10px; border-bottom: 1px dashed var(--line); }
+.tasbih { display: grid; place-items: center; align-content: center; width: min(230px, 70vw); aspect-ratio: 1; margin: 16px auto; border-radius: 50%; border: 3px solid var(--accent); background: var(--accent-soft); color: var(--ink, inherit); cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; touch-action: manipulation; transition: transform .06s; }
+.tasbih:active { transform: scale(.96); }
+.tasbih span { font-size: 3.2rem; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+.tasbih small { color: var(--muted); }
+.tasbih em { font-style: normal; margin-top: 6px; font-weight: 700; }

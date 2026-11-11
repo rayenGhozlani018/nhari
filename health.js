@@ -134,6 +134,7 @@
       </div>
       <div class="card"><h3>${I.plus}${L("سجّل قياس السكر", "Noter une glycémie")}</h3>
         <form data-form="bgAdd" class="form">
+          <div class="full row" style="gap:8px;align-items:center;flex-wrap:wrap"><label class="btn sm" for="bg-photo">📷 ${L("صوّر الجهاز", "Photo du lecteur")}</label><input id="bg-photo" class="hide" type="file" accept="image/*" capture="environment" data-change="bgPhoto"><span id="bgPhotoOut" class="small muted">${L("الذكاء الاصطناعي يقرا الرقم، وانت تثبّت.", "L'IA lit le chiffre, tu vérifies.")}</span></div>
           <label class="f">${L("السكر", "Glycémie")} (${U.bgUnitLabel()})<input id="bg-val" name="bg" type="number" step="${U.bgUnit() === "gL" ? "0.01" : U.bgUnit() === "mmol" ? "0.1" : "1"}" min="0" required inputmode="decimal" placeholder="${U.bgUnit() === "gL" ? "1.20" : U.bgUnit() === "mmol" ? "6.5" : "120"}"></label>
           <label class="f">${L("الوقت", "Moment")}<select id="bg-ctx" name="ctx">${CTX.map(c => `<option value="${c[0]}">${L(c[1], c[2])}</option>`).join("")}</select></label>
           <label class="f">${L("الساعة", "Heure")}<input id="bg-ts" name="ts" type="datetime-local" value="${nowLocalInput()}"></label>

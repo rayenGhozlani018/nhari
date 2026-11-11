@@ -8,6 +8,7 @@ import android.os.PowerManager;
 import android.provider.Settings;
 import android.webkit.JavascriptInterface;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 /** What the web app can ask the phone: plan the reminders, test a sound, open the right settings. */
@@ -110,4 +111,33 @@ final class Bridge {
 
     @JavascriptInterface
     public String version() { return BuildConfig.VERSION_NAME; }
+
+    /** What was logged from notifications while the app was closed: [{t: pray|bg|gym, k, dk, raw, mg, ctx, ts}]. */
+    @JavascriptInterface
+    public String takeActions() { return Actions.take(act); }
+
+    /** The "done?" notifications showing now: [{key, t, k, dk, at}]. */
+    @JavascriptInterface
+    public String postedActs() { return Actions.postedList(act); }
+
+    /** Remove the "done?" notifications that were done in the app. */
+    @JavascriptInterface
+    public void clearActs(String json) {
+        try {
+            JSONArray a = new JSONArray(json);
+            NotificationManager nm = act.getSystemService(NotificationManager.class);
+            for (int i = 0; i < a.length(); i++) {
+                String k = a.optString(i, "");
+                if (k.isEmpty()) continue;
+                nm.cancel(k, Notifs.ID_ACT);
+                Actions.unpost(act, k);
+            }
+        } catch (Exception ignored) { }
+    }
+
+    /** Home-screen widget: {prayers: [{n, at}], work, bg, bgAt, water, gym}. */
+    @JavascriptInterface
+    public void setWidget(String json) {
+        try { NhariWidget.save(act, json); } catch (Exception ignored) { }
+    }
 }

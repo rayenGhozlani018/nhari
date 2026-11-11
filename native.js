@@ -62,6 +62,11 @@
   function plan() {
     const c = cfg(); if (!c.on) return [];
     const ev = [], now = Date.now(), soon = now + 30000;
+    // light mode: adhan, adhkar, dhikr, glucose and thumun stay; the rest becomes a morning and an evening summary
+    const light = !!(App.Quick && App.Quick.light());
+    const unit = U.bgUnit(), unitLbl = U.bgUnitLabel();
+    let lastBg = 0; try { const b = App.H.lastBg(); lastBg = b ? b.ts : 0; } catch (e) { lastBg = 0; }
+    const PRS = ["fajr", "dhuhr", "asr", "maghrib", "isha"];
     for (let i = 0; i < DAYS; i++) {
       const d = U.addDays(new Date(), i), dk = U.dkey(d), dow = U.dow(d);
       let P; try { P = App.prayer.today(d); } catch (e) { continue; }
@@ -74,11 +79,15 @@
       const busy = (t, min) => audio.some(x => Math.abs(x - t) < min * 60000);
 
       // adhan at the five prayers (quiet during classes and during the Sunday halaqa at the mosque)
-      if (c.adhan) for (const k of ["fajr", "dhuhr", "asr", "maghrib", "isha"]) {
+      if (c.adhan) for (const k of PRS) {
         const t = P[k], inHalaqa = dow === 0 && (k === "maghrib" || k === "isha");
+        const nk = PRS[PRS.indexOf(k) + 1], until = nk ? +P[nk] : +t + 5 * 3600000;
         push({ id: `adhan-${dk}-${k}`, at: +t, kind: "audio", prio: 2, stream: "alarm", silent: quiet(t) || inHalaqa,
           title: `🕌 ${L("حان وقت صلاة", "C'est l'heure de")} ${App.prName(k)}`, body: U.hm(t),
-          items: [{ t: "url", url: k === "fajr" ? adhanUrl(FAJR, c.fajrVoice) : adhanUrl(ADHAN, c.voice), cache: true }] });
+          items: [{ t: "url", url: k === "fajr" ? adhanUrl(FAJR, c.fajrVoice) : adhanUrl(ADHAN, c.voice), cache: true }],
+          // after the adhan: « ✅ صليت » in the notification
+          act: { t: "pray", key: `pray-${dk}-${k}`, k, dk, name: App.prName(k), ttl: Math.max(30 * 60000, until - +t - 5 * 60000),
+            title: `🕌 ${App.prName(k)} — ${L("صلّيت؟", "c'est prié ?")}`, body: L("اضغط «✅ صليت» وتتسجّل وحدها.", "Touche « ✅ صليت » pour l'enregistrer.") } });
       }
       // morning adhkar: after the dawn halaqa, before sunrise
       const voice = ADHKAR.find(a => a.id === c.adhkarVoice) || ADHKAR[0];
@@ -102,9 +111,16 @@
       const gym = blocks.find(b => b.kind === "sport");
       if (c.gym && gym) {
         const name = String(gym.title || "").split(/[:：]/).slice(1).join(":").trim();
-        push({ id: `gym-${dk}`, at: +gym.start, kind: "audio", prio: 1, stream: "media", silent: quiet(gym.start),
+        // in light mode the time of the gym is in the morning summary (unless the gym comes first)
+        let amAt = 0; if (light) { try { amAt = +App.Quick.digestTimes(d).am; } catch (e) { amAt = 0; } }
+        if (!light || +gym.start <= amAt + 5 * 60000) push({ id: `gym-${dk}`, at: +gym.start, kind: "audio", prio: 1, stream: "media", silent: quiet(gym.start),
           title: `🏋️ ${L("وقت الجيم", "C'est l'heure de la salle")}`, body: name,
           items: [{ t: "tts", text: `حان وقت الرياضة. ${name ? "حصة اليوم: " + say(name) + "." : ""} لا تنس قياس السكر قبل التمرين.` }] });
+        // at the end of the session: « ✅ عملتها » (quiet)
+        if (!(i === 0 && App.S && App.S.doneToday())) push({ id: `gymq-${dk}`, at: +gym.end, kind: "notify", silent: true,
+          title: `🏋️ ${L("عملت حصة الجيم؟", "Séance faite ?")}`, body: name,
+          act: { t: "gym", key: `gym-${dk}`, dk, ttl: 8 * 3600000, title: `🏋️ ${L("عملت حصة الجيم؟", "Séance faite ?")}`,
+            body: (name ? name + " — " : "") + L("اضغط «✅ عملتها» وتتسجّل.", "Touche « ✅ عملتها » pour l'enregistrer.") } });
       }
       // thumun ×10, with a warning before
       const hifz = blocks.find(b => b.hifz);
@@ -130,20 +146,27 @@
         const bgText = /قيس السكر|glyc/i;
         const meals = blocks.filter(b => b.kind === "food" && bgText.test(b.title));
         const pre = blocks.filter(b => b.kind === "health" && bgText.test(b.title)); // before the gym
+        const bgAct = (key, ctx, what) => ({ t: "bg", key, ctx, dk, unit, ttl: 75 * 60000, label: `${L("السكر", "Glycémie")} (${unitLbl})`,
+          title: `🩸 ${L("قست السكر؟", "Glycémie mesurée ?")}`, body: L(`اكتب القيمة هنا (${unitLbl})`, `Écris la valeur ici (${unitLbl})`) + (what ? " — " + what : "") });
+        const fresh = (t) => lastBg && t >= lastBg && t - lastBg < 25 * 60000; // just measured: no need to remind
         for (const b of [...meals, ...pre]) {
-          const t = +b.start;
-          if (busy(t, 3)) continue;
-          push({ id: `bg-${dk}-${U.hm(b.start).replace(":", "")}`, at: t, kind: "audio", prio: 1, stream: "media", silent: quiet(b.start),
+          const t = +b.start, hhmm = U.hm(b.start).replace(":", "");
+          if (busy(t, 3) || fresh(t)) continue;
+          push({ id: `bg-${dk}-${hhmm}`, at: t, kind: "audio", prio: 1, stream: "media", silent: quiet(b.start),
             title: `🩸 ${L("قيس السكر", "Mesure ta glycémie")}`, body: String(b.title || ""),
-            items: [{ t: "tts", text: "قِس السكر" }] });
+            items: [{ t: "tts", text: "قِس السكر" }],
+            act: bgAct(`bg-${dk}-${hhmm}`, b.kind === "health" ? "presport" : "pre", String(b.title || "").split(/[+—]/)[0].trim()) });
         }
         for (const b of meals) {
           if (/لمجة|Collation/i.test(b.title)) continue; // snacks: before only
           const t = U.plusMin(b.start, 120);
           if (sleep && t >= sleep.start) continue;
-          push({ id: `bg2-${dk}-${U.hm(b.start).replace(":", "")}`, at: +t, kind: "audio", prio: 1, stream: "media", silent: quiet(t),
+          if (fresh(+t)) continue;
+          const hhmm = U.hm(b.start).replace(":", "");
+          push({ id: `bg2-${dk}-${hhmm}`, at: +t, kind: "audio", prio: 1, stream: "media", silent: quiet(t),
             title: `🩸 ${L("قيس السكر — ساعتين بعد الماكلة", "Glycémie — 2 h après le repas")}`, body: String(b.title || "").split(/[+]/)[0].trim(),
-            items: [{ t: "tts", text: "قِس السكر. مرّت ساعتان بعد الأكل." }] });
+            items: [{ t: "tts", text: "قِس السكر. مرّت ساعتان بعد الأكل." }],
+            act: bgAct(`bg2-${dk}-${hhmm}`, "post", L("ساعتين بعد ", "2 h après ") + String(b.title || "").split(/[+—]/)[0].trim()) });
         }
       }
       // every two hours between sobh and isha: a short dhikr (not during classes, not over another sound)
@@ -156,13 +179,25 @@
             title: `📿 ${dz.title}`, body: "", items: [{ t: "url", url: dz.url, cache: true }] });
         }
       }
+      // light mode: the summaries of the morning and the evening
+      if (light && c.notify && App.Quick.digestTimes) {
+        let tt = null; try { tt = App.Quick.digestTimes(d); } catch (e) { tt = null; }
+        if (tt) for (const kind of ["am", "pm"]) {
+          // the evening summary says what is not ticked only when it is computed shortly before (else it would be stale)
+          const live = i === 0 && +tt[kind] - Date.now() < 45 * 60000;
+          let g = null; try { g = App.Quick.digest(kind, d, live); } catch (e) { g = null; }
+          if (g) push({ id: `dg-${kind}-${dk}`, at: +tt[kind], kind: "notify", silent: quiet(tt[kind]), title: g.title, body: g.body });
+        }
+      }
     }
     // the app's own reminders for today (glycemia, work, car, studies...), as plain notifications
     if (c.notify) {
       const audioAt = ev.filter(e => e.kind === "audio").map(e => e.at);
+      const keep = light && App.Quick.KEEP;
       for (const src of (App.eventSources || [])) {
         let list = []; try { list = src() || []; } catch (e) { list = []; }
         for (const x of list) {
+          if (keep && !keep.test(x.key || "")) continue; // in the summaries instead
           const at = x.at instanceof Date ? +x.at : +new Date(x.at);
           if (!(at > soon) || at > now + 36 * 3600000) continue;
           if (audioAt.some(a => Math.abs(a - at) < 3 * 60000)) continue;
@@ -178,11 +213,54 @@
   App.nativePlan = plan;
 
   /* ---------------- hand the plan to the phone ---------------- */
-  let lastSig = "", timer = null;
+  let lastSig = "", timer = null, lastW = "";
+  // home-screen widget: next prayer, work, last glucose, water, gym
+  function widgetState() {
+    const now = new Date(), out = { prayers: [] };
+    for (let i = 0; i < 2; i++) {
+      let P = null; try { P = App.prayer.today(U.addDays(now, i)); } catch (e) { P = null; }
+      if (P) for (const k of ["fajr", "dhuhr", "asr", "maghrib", "isha"]) out.prayers.push({ n: App.prName(k), at: +P[k] });
+    }
+    try {
+      const c = App.moneyCalc(), open = App.W.ticketsOn(U.dkey()).filter(t => t.status === "todo").length;
+      const goal = c.todayObj > 0 ? (c.todayLeft > 0 ? L("باقي ", "reste ") + U.money(c.todayLeft) : L("وصلت للهدف ✅", "objectif atteint ✅")) : L("ما فماش خدمة اليوم", "pas de travail aujourd'hui");
+      out.work = `🧰 ${open ? L(`${open} تيكيات`, `${open} tickets`) : L("حتى تيكي", "0 ticket")} · 🎯 ${goal}`;
+    } catch (e) { /* ignore */ }
+    try { const b = App.H.lastBg(); if (b) { out.bg = U.bgFmt(b.bg).replace(/[\u200e\u200f\u2066-\u2069]/g, ""); out.bgAt = b.ts; } } catch (e) { /* ignore */ }
+    try { out.water = `💧 ${App.Quick.water()}/${App.Quick.waterGoal()}`; } catch (e) { /* ignore */ }
+    try {
+      const k = App.S.todayKey();
+      out.gym = k === "rest" ? "😴 " + L("راحة من الجيم اليوم", "Repos (salle)") : App.S.doneToday() ? "🏋️ ✅ " + L("الحصة تعملت", "Séance faite") : "🏋️ " + App.S.title(k);
+    } catch (e) { /* ignore */ }
+    return out;
+  }
+  function doneActs() {
+    let posted; try { posted = JSON.parse(N.postedActs() || "[]"); } catch (e) { return []; }
+    if (!Array.isArray(posted) || !posted.length) return [];
+    const deen = Store.doc("deen"), sp = Store.doc("sport");
+    let bgs = []; try { bgs = App.H.entries(2).filter(e => e.type === "bg"); } catch (e) { bgs = []; }
+    return posted.filter(p => (p.t === "pray" && p.k && (deen.prayers[p.dk] || {})[p.k]) || (p.t === "gym" && sp.done[p.dk])
+      || (p.t === "bg" && bgs.some(e => e.ts >= (+p.at || 0) - 25 * 60000))).map(p => p.key);
+  }
+  function extras() {
+    if (typeof N.setWidget === "function") {
+      let w = ""; try { w = JSON.stringify(widgetState()); } catch (e) { w = ""; }
+      if (w && w !== lastW) { lastW = w; try { N.setWidget(w); } catch (e) { /* ignore */ } }
+    }
+    if (typeof N.postedActs === "function") {
+      const done = doneActs();
+      if (done.length) try { N.clearActs(JSON.stringify(done)); } catch (e) { /* ignore */ }
+    }
+  }
+  let forcing = false;
   function sync(force) {
     if (!N) return;
+    if (forcing && !force) return; // a forced sync is about to run anyway
     clearTimeout(timer);
+    forcing = !!force;
     timer = setTimeout(() => {
+      forcing = false;
+      try { extras(); } catch (e) { /* ignore */ }
       let events; try { events = plan(); } catch (e) { return; }
       const sig = JSON.stringify(events);
       if (!force && sig === lastSig) return;
@@ -193,10 +271,37 @@
   App.nativeSync = sync;
   const info = () => { try { return JSON.parse(N.info()) || {}; } catch (e) { return {}; } };
 
+  let applying = false;
+  async function applyActions() {
+    if (!N || typeof N.takeActions !== "function" || !App.Quick || applying) return;
+    applying = true;
+    try {
+      // let the cloud copy arrive first, so this does not overwrite what the PC changed meanwhile
+      for (let i = 0; i < 30 && Store.mode === "cloud" && Store.status !== "ok"; i++) await new Promise(r => setTimeout(r, 300));
+      if (Store.mode === "cloud") await new Promise(r => setTimeout(r, 600));
+      let list; try { list = JSON.parse(N.takeActions() || "[]"); } catch (e) { list = []; }
+      if (!Array.isArray(list) || !list.length) return;
+      let n = 0, tests = 0;
+      for (const a of list) {
+        try {
+          if (String(a.key || "").startsWith("test-")) { tests++; continue; }
+          const dk = a.dk || U.dkey(new Date(a.ts || Date.now()));
+          if (a.t === "pray" && a.k) { App.Quick.prayed(a.k, dk); n++; }
+          else if (a.t === "gym") { App.Quick.gymDone(dk); n++; }
+          else if (a.t === "bg" && (a.mg || a.raw)) { App.Quick.bg(a.mg ? U.bgFromMg(+a.mg) : a.raw, a.ctx || "other", a.ts || Date.now()); n++; }
+        } catch (e) { /* ignore */ }
+      }
+      if (n) App.toast(L(`تسجّل من الإشعارات: ${n}`, `Enregistré depuis les notifications : ${n}`), "", "good");
+      if (tests) App.toast(L("الزر يخدم ✅", "Le bouton marche ✅"), L("هذي تجربة، ما تسجّل شي.", "C'était un test, rien n'est enregistré."), "good");
+      if (n || tests) App.render();
+    } finally { applying = false; }
+  }
+  window.NhariNativeActions = applyActions;
+
   if (N) {
     const render = App.render;
     App.render = function () { const r = render.apply(this, arguments); sync(false); return r; };
-    window.NhariNativeResume = () => { sync(true); if (App.tab === "prefs") App.render(); };
+    window.NhariNativeResume = () => { applyActions(); sync(true); if (App.tab === "prefs") App.render(); };
     window.NhariNativeSharePending = async () => {
       let o; try { o = JSON.parse(N.takeShared() || "{}"); } catch (e) { o = {}; }
       const files = (o.files || []).map((f, i) => {
@@ -210,7 +315,7 @@
       if (!App.ai) { App.toast(L("زيد clé API باش يقرا التيكيات", "Ajoute une clé API pour lire les tickets"), "", "warn"); return; }
       App.importTickets(files.length ? { imgs: files } : { text: o.text });
     };
-    window.addEventListener("load", () => setTimeout(() => { sync(true); window.NhariNativeSharePending(); }, 800));
+    window.addEventListener("load", () => setTimeout(() => { applyActions(); sync(true); window.NhariNativeSharePending(); }, 800));
     setInterval(() => sync(false), 15 * 60000);
   }
 
@@ -219,7 +324,7 @@
   const ck = (name, on, label) => `<label class="check"><input type="checkbox" name="${name}" ${on ? "checked" : ""}>${label}</label>`;
   App.NativePrefs = () => {
     if (!N) return "";
-    const c = cfg(), s = info(), next = s.next ? `${U.esc(s.next.title)} — ${U.hm(new Date(s.next.at))}${U.dkey(new Date(s.next.at)) !== U.dkey() ? " (" + U.dateShort(U.dkey(new Date(s.next.at))) + ")" : ""}` : L("ما فماش", "aucun");
+    const c = cfg(), s = info(), next = s.next ? `${U.esc(s.next.title)} — ${U.hm(new Date(s.next.at))}${U.dkey(new Date(s.next.at)) !== U.dkey() ? " (" + U.dateShort(new Date(s.next.at)) + ")" : ""}` : L("ما فماش", "aucun");
     const st = (ok, yes, no, act, btn) => `<div class="li"><span class="grow">${ok ? "✅" : "⚠️"} ${ok ? yes : no}</span>${ok ? "" : `<button class="btn sm primary" type="button" data-act="${act}">${btn}</button>`}</div>`;
     const seg = App.thumunSeg ? App.thumunSeg() : null;
     return `<div class="card stripe accent" style="grid-column:1/-1"><h3 id="native-card">🔔 ${L("التنبيهات بالصوت (التلفون)", "Rappels sonores (téléphone)")}</h3>
@@ -231,6 +336,11 @@
         ${!s.tts || s.tts === "ok" || s.tts === "checking" ? "" : `<div class="li"><span class="grow">⚠️ ${L("التلفون ما عندوش صوت عربي: «قيس السكر» ووقت الجيم والنوم يجيو بصفّارة برك.", "Pas de voix arabe sur le téléphone : glycémie, salle et coucher arrivent avec un simple bip.")}</span><button class="btn sm primary" type="button" data-act="natVoice">${L("زيد الصوت العربي", "Ajouter la voix arabe")}</button></div>`}
         ${s.sound === false ? `<div class="li"><span class="grow small muted">🔕 ${L("التلفون في الصامت: التنبيهات تجي بلا صوت (vibreur).", "Téléphone en silencieux : rappels sans son (vibreur).")}</span></div>` : ""}
       </div>
+      ${App.Quick ? App.Quick.modeChips() : ""}
+      ${typeof N.takeActions === "function" ? `<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px"><span class="small muted">${L("جرّب الأزرار:", "Tester les boutons :")}</span>
+        <button class="btn sm" type="button" data-act="natTestAct" data-k="pray">✅ ${L("صليت", "Prié")}</button>
+        <button class="btn sm" type="button" data-act="natTestAct" data-k="bg">🩸 ${L("قست", "Mesuré")}</button></div>` : ""}
+      ${typeof N.setWidget === "function" ? `<p class="tiny muted" style="margin-top:6px">📱 ${L("الويدجت: اضغط مطوّل على الشاشة الرئيسية ← Widgets ← Nhari.", "Widget : appui long sur l'écran d'accueil → Widgets → Nhari.")}</p>` : ""}
       <form data-form="nativeCfg" class="form" style="margin-top:10px">
         <div class="full" style="display:grid;gap:6px">
           ${ck("on", c.on, L("التنبيهات بالصوت مفتوحة", "Rappels sonores activés"))}
@@ -238,7 +348,7 @@
           ${ck("morning", c.morning, L("أذكار الصباح وحدها (بعد الحلقة)", "Adhkar du matin (après la halaqa)"))}
           ${ck("evening", c.evening, L("أذكار المساء وحدها (قبل المغرب)", "Adhkar du soir (avant le Maghreb)"))}
           ${ck("sleep", c.sleep, L("وقت النوم + أذكار النوم", "Heure du coucher + adhkar du coucher"))}
-          ${ck("gym", c.gym, L("وقت الجيم", "Heure de la salle"))}
+          ${ck("gym", c.gym, L("وقت الجيم + «عملتها؟» في آخر الحصة", "Heure de la salle + « faite ? » à la fin"))}
           ${ck("glucose", c.glucose, L("«قيس السكر» قبل الماكلة وساعتين بعدها", "« Mesure ta glycémie » avant les repas et 2 h après"))}
           ${ck("dhikr", c.dhikr, L("كل ساعتين من الصبح للعشاء: صلّ على النبي / أستغفر الله", "Toutes les 2 h de Sobh à Icha : prière sur le Prophète / istighfar"))}
           ${ck("hifz", c.hifz, L("الثمن يتقرا وحدو في وقت الحفظ", "Le thumun lu tout seul à l'heure du hifz"))}
@@ -298,6 +408,15 @@
   App.acts.natExact = () => N && N.openExactAlarms();
   App.acts.natBattery = () => N && N.openBattery();
   App.acts.natStop = () => N && N.stop();
+  App.acts.natTestAct = (el) => {
+    if (!N) return;
+    const k = el.dataset.k, at = Date.now();
+    const act = k === "bg"
+      ? { t: "bg", key: "test-bg", ctx: "other", dk: U.dkey(), unit: U.bgUnit(), label: `${L("السكر", "Glycémie")} (${U.bgUnitLabel()})`, ttl: 10 * 60000, title: "🩸 " + L("تجربة: قست السكر؟", "Test : glycémie ?"), body: L("اكتب أي رقم (تجربة، ما يتسجّلش)", "Écris un chiffre (test, rien n'est enregistré)") }
+      : { t: "pray", key: "test-pray", k: "dhuhr", dk: U.dkey(), name: L("تجربة", "Test"), ttl: 10 * 60000, title: "🕌 " + L("تجربة: صلّيت؟", "Test : prié ?"), body: L("اضغط «✅ صليت» (تجربة، ما يتسجّلش)", "Touche « ✅ صليت » (test, rien n'est enregistré)") };
+    N.test(JSON.stringify({ id: "test-act-" + at, at, kind: "notify", silent: true, title: act.title, body: act.body, act }));
+    App.toast(L("شوف الإشعارات", "Regarde les notifications"), "", "good");
+  };
   App.acts.natVoice = () => {
     if (!N || !N.installVoice) { App.toast(L("حدّث التطبيق", "Mets l'application à jour"), L("نزّل آخر نسخة من nhari.apk.", "Télécharge la dernière version de nhari.apk."), "warn"); return; }
     N.installVoice();

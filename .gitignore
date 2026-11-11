@@ -1,0 +1,6 @@
+# the signing key is only ever decrypted on the build machine
+android/app/nhari.jks
+*.jks
+android/.gradle/
+android/build/
+android/app/build/

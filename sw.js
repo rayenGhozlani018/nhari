@@ -1,7 +1,7 @@
 /* Nhari — offline cache for the installed app */
-const VERSION = "02aeeab7c6";
+const VERSION = "51713bc202";
 const CACHE = "nhari-" + VERSION;
-const FILES = ["./", "index.html", "manifest.webmanifest", "fonts.css", "app.css", "local-ai.js", "prayer.js", "hadith.js", "data.js", "gym.js", "mapdata.js", "core.js", "money.js", "health.js", "food.js", "study.js", "deen.js", "routine.js", "work.js", "mentor.js", "review.js", "today.js", "prefs.js", "extras.js", "budgets.js", "vendor/firebase-app-compat.js", "vendor/firebase-auth-compat.js", "vendor/firebase-firestore-compat.js", "firebase-config.js", "sync.js", "install.js", "native.js", "local.js",
+const FILES = ["./", "index.html", "manifest.webmanifest", "fonts.css", "app.css", "local-ai.js", "prayer.js", "hadith.js", "data.js", "gym.js", "mapdata.js", "core.js", "money.js", "health.js", "food.js", "study.js", "deen.js", "routine.js", "work.js", "mentor.js", "review.js", "today.js", "prefs.js", "extras.js", "budgets.js", "quick.js", "vendor/firebase-app-compat.js", "vendor/firebase-auth-compat.js", "vendor/firebase-firestore-compat.js", "firebase-config.js", "sync.js", "install.js", "native.js", "local.js",
   "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png", "icons/favicon.png", "icons/apple-touch-icon.png"];
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then(async (c) => {

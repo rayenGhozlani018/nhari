@@ -28,11 +28,31 @@ jobs:
         with:
           gradle-version: "8.9"
 
+      - name: Unlock the signing key
+        id: key
+        env:
+          NHARI_KS_PASS: ${{ secrets.NHARI_KS_PASS }}
+        run: |
+          if [ -z "$NHARI_KS_PASS" ]; then
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Secret NHARI_KS_PASS missing: the code is only compiled, no APK is published."
+          else
+            openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in android/app/nhari.jks.enc -out android/app/nhari.jks -pass env:NHARI_KS_PASS
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build the APK
         working-directory: android
+        env:
+          NHARI_KS_PASS: ${{ secrets.NHARI_KS_PASS }}
         run: gradle --no-daemon assembleRelease -Pvc=${{ github.run_number }}
 
+      - name: Forget the key
+        if: always()
+        run: rm -f android/app/nhari.jks
+
       - name: Publish it as the latest release
+        if: steps.key.outputs.signed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -40,5 +60,11 @@ jobs:
           gh release delete android --yes --cleanup-tag || true
           gh release create android nhari.apk \
             --title "Nhari Android 1.0.${{ github.run_number }}" \
-            --notes "Application Android de Nhari (adhan, adhkar, rappels, thumun ×10). Télécharger nhari.apk sur le téléphone et l'installer." \
+            --notes "Application Android de Nhari (adhan, adhkar, rappels, thumun ×10, boutons dans les notifications, widget). Télécharger nhari.apk sur le téléphone et l'installer." \
             --target "${{ github.sha }}"
+
+      - name: Needs the signing secret
+        if: steps.key.outputs.signed != 'true'
+        run: |
+          echo "::error::Add the repository secret NHARI_KS_PASS (Settings > Secrets and variables > Actions), then run this workflow again."
+          exit 1
