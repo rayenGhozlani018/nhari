@@ -39,7 +39,7 @@
   </div>`;
   }
 
-  App.LocalPrefs = () => `${App.SyncPrefs ? App.SyncPrefs() : ""}${App.PhoneQR ? App.PhoneQR() : ""}${aiCard()}
+  App.LocalPrefs = () => `${App.NativePrefs ? App.NativePrefs() : ""}${App.SyncPrefs ? App.SyncPrefs() : ""}${App.PhoneQR ? App.PhoneQR() : ""}${aiCard()}
   <div class="card" style="grid-column:1/-1"><h3>${I.copy}${L("نسخة احتياطية (ملف)", "Sauvegarde (fichier)")}</h3>
     <p class="small muted">${L("كي تربط الـPC والتلفون (الفوق)، البيانات تتعدّى وحدها. الملف هذا نسخة زيادة للأمان: نزّل واحد كل أحد.", "Une fois le PC et le téléphone reliés (au-dessus), les données passent toutes seules. Ce fichier est une copie de sécurité en plus : télécharges-en une chaque dimanche.")}</p>
     <div class="row" style="margin-top:10px"><button class="btn primary" data-act="backupFile">${L("نزّل ملف النسخة", "Télécharger la sauvegarde")}</button>

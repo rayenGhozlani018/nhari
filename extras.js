@@ -448,6 +448,26 @@ Reply with ONLY JSON: {"title":"short course title","qs":[{"q":"","o":["","","",
     { id: "hafs-minshawi", ar: "المنشاوي — حفص (آية بآية)", fr: "Al-Minshawi — Hafs (verset par verset)", rewaya: "hafs", ayah: (s, a) => `https://everyayah.com/data/Minshawy_Murattal_128kbps/${String(s).padStart(3, "0")}${String(a).padStart(3, "0")}.mp3` }
   ];
   const audio = { el: null, q: [], i: 0, rep: 0, on: false };
+  App.Reciters = RECITERS; App.AYAT = AYAT;
+  // where the current thumun starts and ends inside a whole-surah recitation (marked by ear, once per thumun)
+  App.thumunSeg = () => {
+    const q = Store.doc("settings").quran || {}, seg = q.thumunAudio, h = (App.Q && App.Q.halaqa && App.Q.halaqa()) || {};
+    if (!seg || !(seg.e > seg.s)) return null;
+    if (seg.label && h.label && seg.label !== h.label) return null; // a new thumun: mark it again
+    return seg;
+  };
+  const mmss = (ms) => { const t = Math.round(ms / 1000); return Math.floor(t / 60) + ":" + String(t % 60).padStart(2, "0"); };
+  function segView(rec, playing) {
+    const seg = App.thumunSeg(), whole = !rec.ayah;
+    let html = "";
+    if (whole && playing) html += `<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn sm" type="button" data-act="auMark" data-w="s">📍 ${L("هنا يبدا الثمن", "Le thumun commence ici")}</button><button class="btn sm" type="button" data-act="auMark" data-w="e">📍 ${L("هنا يوفى الثمن", "Le thumun finit ici")}</button></div>`;
+    if (seg) {
+      const r = RECITERS.find(x => x.id === seg.rec);
+      html += `<div class="alertbox good small" style="margin-top:8px">🎯 ${L("الثمن في التلاوة", "Le thumun dans la récitation")}: <bdi dir="ltr">${mmss(seg.s)} → ${mmss(seg.e)}</bdi> (${mmss(seg.e - seg.s)}) — ${U.esc(r ? L(r.ar, r.fr) : seg.rec)}
+        <div class="row" style="gap:8px;margin-top:6px"><button class="btn sm" type="button" data-act="auSeg">▶ ${L("اسمع الثمن", "Écouter le thumun")}</button><button class="btn sm ghost" type="button" data-act="auSegClear">${L("امسح", "Effacer")}</button></div></div>`;
+    } else if (whole) html += `<p class="tiny muted" style="margin-top:6px">${L("باش التطبيق يقرالك الثمن ×10 بقالون: ابدا السورة، وكي يوصل القارئ لأول الثمن انزل «هنا يبدا الثمن»، وفي آخرو «هنا يوفى الثمن». مرة وحدة لكل ثمن.", "Pour que l'application lise le thumun ×10 en Qalun : lance la sourate, puis appuie sur « Le thumun commence ici » au début et « finit ici » à la fin. Une fois par thumun.")}</p>`;
+    return html;
+  }
   function audioView() {
     const h = (App.Q && App.Q.halaqa && App.Q.halaqa()) || {}, a = App.uiState.au || {};
     const surah = +a.surah || +h.surah || 9, from = +a.from || +h.from || 1, to = +a.to || +h.to || Math.min(AYAT[surah - 1], from + 9);
@@ -462,6 +482,7 @@ Reply with ONLY JSON: {"title":"short course title","qs":[{"q":"","o":["","","",
         <label class="f">${L("كل آية قداش مرة", "Répéter chaque verset")}<select id="au-r" name="rep">${[1, 3, 5, 10].map(n => `<option ${n === (+a.rep || 3) ? "selected" : ""}>${n}</option>`).join("")}</select></label>
         <div class="row full" style="gap:8px"><button class="btn primary" type="submit">${I.play}${playing ? L("عاود من الأول", "Recommencer") : L("ابدا", "Lancer")}</button>${playing ? `<button class="btn" type="button" data-act="auStop">${L("وقّف", "Arrêter")}</button>` : ""}</div></form>
       <div id="auNow" class="small" style="margin-top:8px">${playing ? auStatus() : ""}</div>
+      ${segView(rec, playing)}
       <p class="tiny muted" style="margin-top:6px">${L("تلاوات قالون (رواية تونس) موجودة بالسورة كاملة برك. باش تعاود آية بآية، اختار تلاوة «آية بآية» (برواية حفص) وانتبه للفروق في القراءة.", "Les récitations en Qalun (lecture tunisienne) existent seulement par sourate entière. Pour répéter verset par verset, choisis une récitation « verset par verset » (lecture Hafs) et attention aux différences de lecture.")} ${L("يستحق انترنت.", "Nécessite internet.")}</p></div>`;
   }
   const auStatus = () => { const it = audio.q[audio.i]; return it ? (it.a ? L(`الآية ${it.a} — المرة ${audio.rep + 1}/${it.n}`, `Verset ${it.a} — fois ${audio.rep + 1}/${it.n}`) : L("السورة كاملة", "Sourate entière")) : ""; };
@@ -480,6 +501,31 @@ Reply with ONLY JSON: {"title":"short course title","qs":[{"q":"","o":["","","",
     const n = document.getElementById("auNow"); if (n) n.textContent = auStatus();
   }
   App.acts.auStop = () => { if (audio.el) audio.el.pause(); audio.on = false; App.render(); };
+  App.acts.auMark = (el) => {
+    if (!audio.el || !audio.on) return;
+    const a = App.uiState.au || {}, rec = RECITERS.find(r => r.id === a.rec) || RECITERS[0];
+    const s = Store.doc("settings"); s.quran = s.quran || {};
+    const h = (App.Q && App.Q.halaqa && App.Q.halaqa()) || {};
+    const t = Math.round(audio.el.currentTime * 1000);
+    const seg = Object.assign({}, s.quran.thumunAudio && s.quran.thumunAudio.rec === rec.id && s.quran.thumunAudio.surah === (+a.surah || 9) ? s.quran.thumunAudio : {}, { rec: rec.id, surah: +a.surah || 9, label: h.label || "" });
+    seg[el.dataset.w] = t;
+    s.quran.thumunAudio = seg; Store.save("settings");
+    if (seg.s != null && seg.e != null && seg.e <= seg.s) App.toast(L("النهاية قبل البداية", "La fin est avant le début"), L("عاود علّم النهاية بعد البداية.", "Marque la fin après le début."), "warn");
+    else App.toast(el.dataset.w === "s" ? L("تسجّلت البداية", "Début noté") : L("تسجّلت النهاية", "Fin notée"), mmss(t), "good");
+    App.render();
+  };
+  App.acts.auSeg = () => {
+    const seg = App.thumunSeg(); if (!seg) return;
+    const rec = RECITERS.find(r => r.id === seg.rec); if (!rec || !rec.surah) return;
+    if (!audio.el) { audio.el = new Audio(); }
+    audio.on = false; audio.q = [];
+    const el = audio.el, url = rec.surah(seg.surah);
+    const go = () => { el.currentTime = seg.s / 1000; el.play().catch(() => {}); };
+    if (el.src !== url) { el.src = url; el.addEventListener("loadedmetadata", go, { once: true }); } else go();
+    const stop = () => { if (el.currentTime * 1000 >= seg.e) { el.pause(); el.removeEventListener("timeupdate", stop); } };
+    el.addEventListener("timeupdate", stop);
+  };
+  App.acts.auSegClear = () => { const s = Store.doc("settings"); if (s.quran) delete s.quran.thumunAudio; Store.save("settings"); App.render(); };
   tab("deen", "listen", () => L("استمع", "Écouter"), () => `<div class="grid">${audioView()}</div>`);
 
   // Friday: al-Kahf and the hour of answered du'a
