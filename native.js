@@ -26,9 +26,15 @@
     { id: "jibril", ar: "محمد جبريل", fr: "Muhammad Jibril", m: 7, e: 8 }
   ];
   const SLEEP = AK(11);
-  const DHIKR = ["اللهم صلّ وسلّم على نبينا محمد", "أستغفر الله العظيم وأتوب إليه", "سبحان الله وبحمده، سبحان الله العظيم"];
+  // short recordings, so the reminder is heard even when the phone has no Arabic voice
+  const MEA = (n) => `https://thenasihun.github.io/me-azkar-web/assets/${n}.mp3`;
+  const DHIKR = [
+    { title: "اللهم صلّ على محمد وعلى آل محمد", url: MEA(30) },
+    { title: "أستغفر الله — ﴿فَقُلْتُ اسْتَغْفِرُوا رَبَّكُمْ إِنَّهُ كَانَ غَفَّارًا﴾", url: "https://everyayah.com/data/Minshawy_Murattal_128kbps/071010.mp3" },
+    { title: "سبحان الله وبحمده، عدد خلقه ورضا نفسه", url: MEA(14) }
+  ];
 
-  const DEF = { on: true, adhan: true, voice: "makkah", fajrVoice: "fajr", dhikr: true, morning: true, evening: true, eveningBefore: 30, adhkarVoice: "afasy", sleep: true, gym: true, hifz: true, hifzN: 10, hifzWarn: 5, quietClass: true, notify: true };
+  const DEF = { on: true, adhan: true, voice: "makkah", fajrVoice: "fajr", dhikr: true, morning: true, evening: true, eveningBefore: 30, adhkarVoice: "afasy", sleep: true, gym: true, glucose: true, hifz: true, hifzN: 10, hifzWarn: 5, quietClass: true, notify: true };
   const cfg = () => Object.assign({}, DEF, Store.doc("settings").native || {});
   const DAYS = 7;
   const say = (s) => String(s || "").replace(/\s*\+\s*/g, " و ").replace(/[—–]/g, "، ");
@@ -61,6 +67,7 @@
       let P; try { P = App.prayer.today(d); } catch (e) { continue; }
       let blocks = []; try { blocks = App.R ? App.R.day(d) : []; } catch (e) { blocks = []; }
       const inClass = (t) => blocks.some(b => b.cls && t >= b.start && t < b.end);
+      const sleep = blocks.filter(b => b.kind === "rest").sort((a, b) => a.start - b.start).pop();
       const quiet = (t) => !!(c.quietClass && inClass(t));
       const audio = [];
       const push = (o) => { if (!(o.at > soon)) return; ev.push(o); if (o.kind === "audio") audio.push(o.at); };
@@ -115,18 +122,38 @@
         }
       }
       // sleep: reminder + adhkar of sleep
-      const sleep = blocks.filter(b => b.kind === "rest").sort((a, b) => a.start - b.start).pop();
       if (c.sleep && sleep && U.hm(sleep.start) >= "20:30") push({ id: `sleep-${dk}`, at: +sleep.start, kind: "audio", prio: 1, stream: "media",
         title: `😴 ${L("وقت النوم", "C'est l'heure de dormir")}`, body: L("قيس السكر، وأذكار النوم", "Glycémie, puis adhkar du coucher"),
         items: [{ t: "tts", text: "حان وقت النوم. لا تنس قياس السكر. نبدأ أذكار النوم." }, { t: "url", url: SLEEP, cache: true }] });
+      // glucose: before each meal, and 2 h after the main meals
+      if (c.glucose) {
+        const bgText = /قيس السكر|glyc/i;
+        const meals = blocks.filter(b => b.kind === "food" && bgText.test(b.title));
+        const pre = blocks.filter(b => b.kind === "health" && bgText.test(b.title)); // before the gym
+        for (const b of [...meals, ...pre]) {
+          const t = +b.start;
+          if (busy(t, 3)) continue;
+          push({ id: `bg-${dk}-${U.hm(b.start).replace(":", "")}`, at: t, kind: "audio", prio: 1, stream: "media", silent: quiet(b.start),
+            title: `🩸 ${L("قيس السكر", "Mesure ta glycémie")}`, body: String(b.title || ""),
+            items: [{ t: "tts", text: "قِس السكر" }] });
+        }
+        for (const b of meals) {
+          if (/لمجة|Collation/i.test(b.title)) continue; // snacks: before only
+          const t = U.plusMin(b.start, 120);
+          if (sleep && t >= sleep.start) continue;
+          push({ id: `bg2-${dk}-${U.hm(b.start).replace(":", "")}`, at: +t, kind: "audio", prio: 1, stream: "media", silent: quiet(t),
+            title: `🩸 ${L("قيس السكر — ساعتين بعد الماكلة", "Glycémie — 2 h après le repas")}`, body: String(b.title || "").split(/[+]/)[0].trim(),
+            items: [{ t: "tts", text: "قِس السكر. مرّت ساعتان بعد الأكل." }] });
+        }
+      }
       // every two hours between sobh and isha: a short dhikr (not during classes, not over another sound)
       if (c.dhikr) {
         let k = 0;
         for (let t = U.plusMin(P.fajr, 120); t < P.isha; t = U.plusMin(t, 120)) {
           if (inClass(t) || busy(+t, 15) || (hifzAt && t >= hifzAt - 10 * 60000 && t <= hifzAt + 50 * 60000)) continue;
-          const text = DHIKR[(k++ + i) % DHIKR.length];
+          const dz = DHIKR[(k++ + i) % DHIKR.length];
           push({ id: `dhikr-${dk}-${U.hm(t).replace(":", "")}`, at: +t, kind: "audio", prio: 0, stream: "media",
-            title: `📿 ${text}`, body: "", items: [{ t: "tts", text }, { t: "tts", text }] });
+            title: `📿 ${dz.title}`, body: "", items: [{ t: "url", url: dz.url, cache: true }] });
         }
       }
     }
@@ -201,6 +228,7 @@
         ${st(s.exact, L("المنبّه في الوقت بالضبط", "Alarmes à l'heure exacte"), L("المنبّه ما يجيش في الوقت بالضبط", "Alarmes pas à l'heure exacte"), "natExact", L("اسمح", "Autoriser"))}
         ${st(s.battery, L("البطارية: بلا قيود", "Batterie : sans restriction"), L("البطارية تنجم توقف التنبيهات", "La batterie peut bloquer les rappels"), "natBattery", L("بلا قيود", "Sans restriction"))}
         <div class="li"><span class="grow">⏰ ${L("الجاي", "Prochain")}: ${next}</span><span class="tiny muted">${s.count || 0} ${L("تنبيه مبرمج", "rappels prévus")}</span></div>
+        ${!s.tts || s.tts === "ok" || s.tts === "checking" ? "" : `<div class="li"><span class="grow">⚠️ ${L("التلفون ما عندوش صوت عربي: «قيس السكر» ووقت الجيم والنوم يجيو بصفّارة برك.", "Pas de voix arabe sur le téléphone : glycémie, salle et coucher arrivent avec un simple bip.")}</span><button class="btn sm primary" type="button" data-act="natVoice">${L("زيد الصوت العربي", "Ajouter la voix arabe")}</button></div>`}
         ${s.sound === false ? `<div class="li"><span class="grow small muted">🔕 ${L("التلفون في الصامت: التنبيهات تجي بلا صوت (vibreur).", "Téléphone en silencieux : rappels sans son (vibreur).")}</span></div>` : ""}
       </div>
       <form data-form="nativeCfg" class="form" style="margin-top:10px">
@@ -211,6 +239,7 @@
           ${ck("evening", c.evening, L("أذكار المساء وحدها (قبل المغرب)", "Adhkar du soir (avant le Maghreb)"))}
           ${ck("sleep", c.sleep, L("وقت النوم + أذكار النوم", "Heure du coucher + adhkar du coucher"))}
           ${ck("gym", c.gym, L("وقت الجيم", "Heure de la salle"))}
+          ${ck("glucose", c.glucose, L("«قيس السكر» قبل الماكلة وساعتين بعدها", "« Mesure ta glycémie » avant les repas et 2 h après"))}
           ${ck("dhikr", c.dhikr, L("كل ساعتين من الصبح للعشاء: صلّ على النبي / أستغفر الله", "Toutes les 2 h de Sobh à Icha : prière sur le Prophète / istighfar"))}
           ${ck("hifz", c.hifz, L("الثمن يتقرا وحدو في وقت الحفظ", "Le thumun lu tout seul à l'heure du hifz"))}
           ${ck("quietClass", c.quietClass, L("بلا صوت وقت القراية (vibreur برك)", "Silencieux pendant les cours (vibreur)"))}
@@ -227,7 +256,9 @@
       <div class="small" style="margin-top:10px">${seg ? "🎯 " + L("الثمن معلّم في تلاوة قالون: يتقرا بقالون.", "Thumun marqué dans la récitation Qalun : lecture en Qalun.") : "ℹ️ " + L("الثمن موش معلّم: يتقرا آية بآية بحفص. باش يولّي بقالون: الدين ← «استمع» ← علّم بداية ونهاية الثمن.", "Thumun pas encore marqué : lecture verset par verset en Hafs. Pour Qalun : Dine → « Écouter » → marque le début et la fin.")}</div>
       <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:10px">
         <button class="btn sm" type="button" data-act="natTest" data-k="adhan">🔊 ${L("الأذان", "Adhan")}</button>
-        <button class="btn sm" type="button" data-act="natTest" data-k="dhikr">🔊 ${L("صلّ على النبي", "Prière sur le Prophète")}</button>
+        <button class="btn sm" type="button" data-act="natTest" data-k="fajr">🔊 ${L("أذان الصبح", "Adhan du Sobh")}</button>
+        <button class="btn sm" type="button" data-act="natTest" data-k="dhikr">🔊 ${L("الذكر", "Dhikr")}</button>
+        <button class="btn sm" type="button" data-act="natTest" data-k="bg">🔊 ${L("قيس السكر", "Glycémie")}</button>
         <button class="btn sm" type="button" data-act="natTest" data-k="morning">🔊 ${L("أذكار الصباح", "Adhkar du matin")}</button>
         <button class="btn sm" type="button" data-act="natTest" data-k="hifz">🔊 ${L("الثمن (مرة)", "Thumun (1 fois)")}</button>
         <button class="btn sm ghost" type="button" data-act="natStop">⏹ ${L("وقّف", "Arrêter")}</button>
@@ -251,7 +282,7 @@
   App.acts.natGo = () => { App.go("prefs"); setTimeout(() => { const el = document.getElementById("native-card"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 150); };
 
   App.forms.nativeCfg = (fd, form) => {
-    const s = Store.doc("settings"), bools = ["on", "adhan", "morning", "evening", "sleep", "gym", "dhikr", "hifz", "quietClass", "notify"];
+    const s = Store.doc("settings"), bools = ["on", "adhan", "morning", "evening", "sleep", "gym", "glucose", "dhikr", "hifz", "quietClass", "notify"];
     const n = Object.assign({}, cfg());
     bools.forEach(k => { const el = form.querySelector(`[name="${k}"]`); n[k] = !!(el && el.checked); });
     ["voice", "fajrVoice", "adhkarVoice"].forEach(k => { if (fd[k]) n[k] = fd[k]; });
@@ -267,12 +298,19 @@
   App.acts.natExact = () => N && N.openExactAlarms();
   App.acts.natBattery = () => N && N.openBattery();
   App.acts.natStop = () => N && N.stop();
+  App.acts.natVoice = () => {
+    if (!N || !N.installVoice) { App.toast(L("حدّث التطبيق", "Mets l'application à jour"), L("نزّل آخر نسخة من nhari.apk.", "Télécharge la dernière version de nhari.apk."), "warn"); return; }
+    N.installVoice();
+    App.toast(L("الصوت العربي", "Voix arabe"), L("في الصفحة اللي تتحل: اختار «العربية» ونزّلها، وبعد ارجع لـ Nhari.", "Dans la page qui s'ouvre : choisis « Arabe », télécharge-la, puis reviens dans Nhari."), "info");
+  };
   App.acts.natTest = (el) => {
     if (!N) return;
     const c = cfg(), k = el.dataset.k;
     let e;
     if (k === "adhan") e = { title: "🕌 " + L("تجربة الأذان", "Test de l'adhan"), stream: "alarm", items: [{ t: "url", url: adhanUrl(ADHAN, c.voice), cache: true }] };
-    else if (k === "dhikr") e = { title: "📿 " + DHIKR[0], items: [{ t: "tts", text: DHIKR[0] }] };
+    else if (k === "fajr") e = { title: "🕌 " + L("تجربة أذان الصبح", "Test de l'adhan du Sobh"), stream: "alarm", items: [{ t: "url", url: adhanUrl(FAJR, c.fajrVoice), cache: true }] };
+    else if (k === "dhikr") { const dz = DHIKR[Math.floor(Math.random() * DHIKR.length)]; e = { title: "📿 " + dz.title, items: [{ t: "url", url: dz.url, cache: true }] }; }
+    else if (k === "bg") e = { title: "🩸 " + L("قيس السكر", "Mesure ta glycémie"), items: [{ t: "tts", text: "قِس السكر" }] };
     else if (k === "morning") { const v = ADHKAR.find(a => a.id === c.adhkarVoice) || ADHKAR[0]; e = { title: "☀️ " + L("أذكار الصباح", "Adhkar du matin"), items: [{ t: "tts", text: "أذكار الصباح" }, { t: "url", url: AK(v.m), cache: true }] }; }
     else if (k === "hifz") { const th = thumunItems(1); if (!th) { App.toast(L("الثمن موش محدّد", "Thumun non défini"), L("حدّد الحلقة (السورة والآيات) في الإعدادات.", "Indique la halaqa (sourate et versets) dans les réglages."), "warn"); return; } e = { title: "📖 " + th.label, items: th.items }; }
     if (!e) return;

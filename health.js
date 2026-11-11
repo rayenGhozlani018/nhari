@@ -304,10 +304,42 @@
   const scaled = (it) => { const m = lvlMul(); return { key: it[0], sets: it[1], reps: it[2] ? Math.max(4, Math.round(it[2] * m)) : null, sec: it[3] ? Math.round(it[3] * (it[3] > 300 ? 1 : m) / 5) * 5 : null, rest: it[4] }; };
   const fmtSec = (s) => s >= 60 ? Math.round(s / 60) + " " + L("دقيقة", "min") : s + " " + L("ثانية", "s");
   const GYMP = () => Object.assign({}, window.NhariGym ? window.NhariGym.PROGRAM : {}, Store.doc("sport").prog || {});
+  /* The week's sessions are done in programme order. A session missed on its day moves to the
+     next training day (missed Monday → Wednesday does Monday's, and so on); rest days stay rest. */
+  const WEEK = [1, 2, 3, 4, 5, 6, 0];
+  const plans = {};
+  function weekPlan(d) {
+    const P = GYMP(), sp = Store.doc("sport"), dow = U.dow(d), monday = U.addDays(d, -((dow + 6) % 7));
+    const days = WEEK.map((wd, i) => { const date = U.addDays(monday, i); return { wd, k: U.dkey(date), slot: !!(P[wd] && !P[wd].rest) }; });
+    const today = U.dkey();
+    const sig = days[0].k + "|" + today + "|" + JSON.stringify(days.map(x => sp.done[x.k] ? sp.done[x.k].w || 1 : 0)) + "|" + JSON.stringify(Object.keys(P).map(k => !!P[k].rest)) + "|" + (sp.noShift ? 1 : 0);
+    if (plans[days[0].k] && plans[days[0].k].sig === sig) return plans[days[0].k].map;
+    const queue = days.filter(x => x.slot).map(x => x.wd), map = {};
+    const take = (wd) => { const i = queue.indexOf(wd); if (i >= 0) queue.splice(i, 1); };
+    for (const x of days) {
+      const done = sp.done[x.k];
+      if (done) {
+        const s = done.w && /^gym\d$/.test(done.w) ? +done.w.slice(3) : (x.slot ? (sp.noShift ? x.wd : queue[0]) : null);
+        if (s != null) { take(s); map[x.k] = { s, done: true, moved: s !== x.wd }; }
+        else map[x.k] = { s: null, done: true };
+      } else if (x.k < today) {
+        map[x.k] = x.slot ? { s: x.wd, missed: true } : { s: null };
+      } else if (x.slot && queue.length) {
+        const s = sp.noShift ? x.wd : queue[0]; take(s);
+        map[x.k] = { s, moved: s !== x.wd };
+      } else map[x.k] = { s: null };
+    }
+    map.left = queue.slice(); // sessions that no longer fit in this week
+    plans[days[0].k] = { sig, map };
+    return map;
+  }
   App.S = {
     gym() { return Store.doc("settings").sport.mode === "gym" && !!window.NhariGym; },
+    weekPlan,
+    /** which programme day (0–6) is trained on date d, or null for rest */
+    sessionDow(d = new Date()) { const p = weekPlan(d)[U.dkey(d)]; return p ? p.s : null; },
     dayKey(d = new Date()) {
-      if (App.S.gym()) { const pd = GYMP()[U.dow(d)]; return pd && !pd.rest ? "gym" + U.dow(d) : "rest"; }
+      if (App.S.gym()) { const s = App.S.sessionDow(d); return s == null ? "rest" : "gym" + s; }
       return Store.doc("settings").sport.week[U.dow(d)] || "rest";
     },
     todayKey() { return App.S.dayKey(new Date()); },
@@ -390,9 +422,16 @@
     const order = [1, 2, 3, 4, 5, 6, 0];
     const monday = U.addDays(now, -((dow + 6) % 7));
     const wdn = [L("أحد", "Dim"), L("اثنين", "Lun"), L("ثلاثاء", "Mar"), L("أربعاء", "Mer"), L("خميس", "Jeu"), L("جمعة", "Ven"), L("سبت", "Sam")];
-    const strip = order.map((d, i) => { const k = U.dkey(U.addDays(monday, i)); const pd = d === dow ? App.gymProgFor(d, k) : weekProg(sp, d); return `<div class="d ${d === dow ? "today" : ""} ${sp.done[k] ? "done" : ""}"><b>${wdn[d]}</b>${U.esc(L(pd.ar, pd.fr))}</div>`; }).join("");
-    const pick = App.uiState.gymDay != null ? +App.uiState.gymDay : dow;
-    const pd = pick === dow ? App.gymProgFor(dow, tk) : weekProg(sp, pick);
+    const wp = App.S.weekPlan(now), sd = App.S.sessionDow(now);
+    const strip = order.map((d, i) => {
+      const k = U.dkey(U.addDays(monday, i)), p = wp[k] || {};
+      const pd = k === tk && sp.custom && sp.custom[k] ? sp.custom[k] : p.s != null ? weekProg(sp, p.s) : weekProg(sp, d);
+      const label = p.s == null && !pd.rest && !p.done ? L("راحة", "Repos") : L(pd.ar, pd.fr);
+      return `<div class="d ${d === dow ? "today" : ""} ${sp.done[k] ? "done" : ""} ${p.missed ? "missed" : ""}"><b>${wdn[d]}</b>${p.missed ? "✗ " : p.moved ? "↪ " : ""}${U.esc(label)}</div>`;
+    }).join("");
+    const pick = App.uiState.gymDay != null ? +App.uiState.gymDay : (sd != null ? sd : dow);
+    const pd = App.uiState.gymDay == null ? App.gymProgFor(sd != null ? sd : dow, tk) : weekProg(sp, pick);
+    const moved = App.uiState.gymDay == null && sd != null && sd !== dow && !(sp.custom && sp.custom[tk]);
     const custom = pick === dow && !!(sp.custom && sp.custom[tk]);
     const done = App.S.doneToday();
     const last = H.lastBg();
@@ -405,6 +444,8 @@
       <div class="grid g2">
         <div class="card stripe ${done ? "good" : "accent"}"><h3>${I.run}${L("حصة اليوم", "Séance du jour")}</h3>
           <div class="mid">${U.esc(L(pd.ar, pd.fr))}</div>
+          ${moved ? `<p class="small" style="margin-top:4px">↪ ${L(`حصة ${wdn[sd]} اللي ما عملتهاش — تعدّت لليوم وحدها.`, `Séance du ${wdn[sd]} manquée — reportée à aujourd'hui.`)}</p>` : ""}
+          ${(wp.left || []).length && !App.uiState.gymDay ? `<p class="tiny muted" style="margin-top:4px">${L("ما عادش فما بلاصة هالأسبوع لـ", "Plus de place cette semaine pour")}: ${wp.left.map(x => U.esc(L(weekProg(sp, x).ar, weekProg(sp, x).fr))).join("، ")}</p>` : ""}
           ${custom ? `<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px"><span class="pill saffron">${L("حصة اليوم مبدّلة", "Séance du jour modifiée")}</span><button class="btn sm" data-act="gymKeep">${L(`خلّيها حصة كل ${wdn[dow]}`, `La garder chaque ${wdn[dow]}`)}</button><button class="btn sm ghost" data-act="gymReset">${L("رجّع البرنامج العادي", "Revenir au programme")}</button></div>` : ""}
           ${pd.rest ? `<p class="small muted" style="margin-top:6px">${L("نهار راحة للعضلات. مشي خفيف 15–20 دقيقة بعد الماكلة يعاون السكر.", "Repos musculaire. 15–20 min de marche après un repas aide la glycémie.")}</p>` : `
           <p class="small muted">${pd.items.length} ${L("تمارين", "exercices")} · ~${estMin} ${L("دقيقة", "min")}</p>
@@ -438,7 +479,7 @@
     html += `<div class="card" style="margin-top:14px"><h3>${I.spark}${L("نصايح باش تحسّن البرنامج", "Conseils pour améliorer le programme")}</h3><div class="list">${G.TIPS.map(t => `<div class="li"><span class="grow small">${U.esc(L(t.ar, t.fr))}</span></div>`).join("")}</div></div>`;
     return html;
   }
-  App.changes.gymDay = (el) => { App.uiState.gymDay = +el.value === U.dow() ? null : +el.value; App.render(); };
+  App.changes.gymDay = (el) => { const sd = App.S.sessionDow(new Date()); App.uiState.gymDay = +el.value === (sd != null ? sd : U.dow()) ? null : +el.value; App.render(); };
   App.acts.gymKeep = () => {
     const sp = Store.doc("sport"), tk = U.dkey(), d = U.dow(), cu = sp.custom && sp.custom[tk]; if (!cu) return;
     sp.prog = sp.prog || {}; sp.prog[d] = { ar: cu.ar, fr: cu.fr, items: cu.items.map(it => Object.assign({}, it)) };
